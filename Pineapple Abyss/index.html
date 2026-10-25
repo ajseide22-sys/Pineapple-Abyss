@@ -1,0 +1,1009 @@
+<title>Pineapple Abyss</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Grenze+Gotisch:wght@600;800&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one-screen game shell. Boss frames across the top, the arena canvas centred, the action bar below. Menus are full-screen overlays. Deliberately single dark theme (a raid at the bottom of a venom pit). */
+:root{
+  --bg:#0a1310; --panel:#111e19; --panel-2:#182a22; --line:#2a4136; --fg:#e9f0e3; --muted:#93a899;
+  --gold:#f2b631; --venom:#93d64e; --danger:#ff5b3a; --soak:#ffd34d; --blood:#d6455c; --frost:#62bdff; --void:#b48cff;
+  --tank:#5ea9ff; --heal:#79e079; --dps:#ff7b5c;
+  --display:'Grenze Gotisch', Georgia, 'Times New Roman', serif;
+  --ui:'Barlow Semi Condensed', 'Arial Narrow', system-ui, sans-serif;
+  color-scheme:dark;
+}
+html{box-sizing:border-box;height:100%}
+*,*::before,*::after{box-sizing:inherit}
+body{height:100%;background:var(--bg);color:var(--fg);font-family:var(--ui);font-size:15px;overflow:hidden;-webkit-user-select:none;user-select:none}
+button{font-family:inherit;color:inherit}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+#app{height:100%;display:flex;flex-direction:column;gap:6px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:8px}
+
+/* boss frames */
+#bossbar{display:flex;flex-wrap:wrap;gap:6px 10px;min-height:44px;align-items:stretch}
+.bf{flex:1 1 210px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px 6px;display:flex;flex-direction:column;gap:3px}
+.bf.dead{opacity:.45}
+.bf-top{display:flex;justify-content:space-between;gap:8px;font-weight:600;font-size:14px;white-space:nowrap}
+.bf-top .nm{overflow:hidden;text-overflow:ellipsis}
+.bf-top .pct{font-variant-numeric:tabular-nums;color:var(--muted)}
+.tag{font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:0 5px;border-radius:3px;background:#2d1d47;color:var(--void);margin-left:6px}
+.bar{position:relative;height:9px;background:#05100c;border-radius:3px;overflow:hidden}
+.bar>i{position:absolute;inset:0 auto 0 0;background:var(--blood);border-radius:3px}
+.bar.hp>i{background:linear-gradient(90deg,#b4283f,#e0505f)}
+.bar.en{height:5px}.bar.en>i{background:var(--void)}
+.bar.sh>i{background:#cfd6ff}
+.cast{font-size:12px;color:var(--soak);height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+
+/* stage */
+#stage{flex:1;min-height:0;position:relative;display:grid;place-items:center}
+#arena{position:relative;max-width:100%}
+#cv{display:block;border-radius:8px;box-shadow:0 0 0 1px var(--line),0 20px 60px #0008;touch-action:none}
+#alert{position:absolute;left:50%;top:13%;transform:translateX(-50%);font-family:var(--display);font-size:clamp(18px,3.2vw,34px);letter-spacing:.02em;text-align:center;pointer-events:none;text-shadow:0 2px 0 #000,0 0 18px #000;width:92%;text-wrap:balance;transition:opacity .25s}
+#alert.you{color:#5fe0ff}#alert.warn{color:var(--danger)}#alert.good{color:var(--venom)}#alert.info{color:var(--soak)}
+#count{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-size:clamp(40px,9vw,110px);color:var(--gold);text-shadow:0 4px 0 #000;pointer-events:none}
+#raid{position:absolute;left:6px;top:6px;display:grid;grid-template-columns:repeat(2,minmax(0,84px));gap:3px;pointer-events:auto}
+.rf{position:relative;height:19px;background:#05100cdd;border:1px solid #0000;border-radius:3px;overflow:hidden;font-size:11px;line-height:17px;padding:0 4px;cursor:default;white-space:nowrap}
+.rf>i{position:absolute;inset:0 auto 0 0;opacity:.55}
+.rf>span{position:relative}
+.rf.me{border-color:#fff8}
+.rf.deb{border-color:var(--void);box-shadow:inset 0 0 0 1px var(--void)}
+.rf.sel{outline:1px dashed var(--soak)}
+.rf.dead{opacity:.35}
+.heal-mode .rf{cursor:pointer}
+#assign{position:absolute;right:6px;top:6px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;pointer-events:none;max-width:46%}
+.chip{background:#05100cdd;border:1px solid var(--line);border-radius:4px;padding:2px 7px;font-size:12px;font-weight:600;letter-spacing:.03em;text-align:right}
+#timer{position:absolute;right:8px;bottom:6px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;pointer-events:none}
+
+/* action bar */
+#hud{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:center}
+#me{flex:1 1 260px;max-width:440px;min-width:0;display:flex;flex-direction:column;gap:4px}
+#me .bar{height:14px}
+#me .bar.hp>i{background:linear-gradient(90deg,#3d9c3f,#86d24c)}
+#me .bar.mp>i{background:linear-gradient(90deg,#2d6fd1,#62bdff)}
+#me .bar b{position:absolute;inset:0;font-size:11px;line-height:14px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;text-shadow:0 1px 0 #000}
+#debs{display:flex;flex-wrap:wrap;gap:4px;min-height:20px}
+.db{font-size:12px;padding:1px 6px;border-radius:3px;background:#05100c;border:1px solid currentColor;font-variant-numeric:tabular-nums;white-space:nowrap}
+#abil{display:flex;gap:6px}
+.ab{position:relative;width:74px;height:58px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:pointer;overflow:hidden;touch-action:manipulation}
+.ab .k{font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.ab .n{font-size:13px;font-weight:600;line-height:1.05;text-align:center;padding:0 3px}
+.ab .cd{position:absolute;inset:0;background:conic-gradient(#000b calc(var(--p,0)*360deg),#0000 0);pointer-events:none}
+.ab .cdt{position:absolute;inset:0;display:grid;place-items:center;font-size:20px;font-weight:700;pointer-events:none;text-shadow:0 1px 0 #000}
+.ab:active{transform:translateY(1px)}
+.ab.ready{border-color:var(--gold)}
+
+/* overlays */
+.ov{position:fixed;inset:0;z-index:20;background:radial-gradient(120% 90% at 50% 0%,#14281f 0%,#07100c 70%);overflow:auto;padding:max(18px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(18px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.ov.dim{background:#050b08e6}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+.brand{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 18px}
+.brand h1{font-family:var(--display);font-weight:800;font-size:clamp(46px,8vw,88px);line-height:.9;margin:0;color:var(--gold);text-shadow:0 3px 0 #3a2400}
+.brand p{margin:0 0 8px;color:var(--muted);max-width:52ch;line-height:1.35}
+h2{font-family:var(--display);font-weight:600;font-size:26px;margin:0;color:var(--fg);letter-spacing:.01em}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.roles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.role{display:flex;gap:12px;align-items:center;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
+.role canvas{flex:none}
+.role b{display:block;font-size:19px}
+.role span{display:block;font-size:13px;color:var(--muted);line-height:1.25}
+.role[aria-pressed="true"]{border-color:var(--gold);background:#1f2a17;box-shadow:inset 0 0 0 1px var(--gold)}
+.raidgrp{display:flex;flex-direction:column;gap:10px}
+.bosses{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.boss{display:flex;flex-direction:column;gap:4px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer;min-height:84px}
+.boss:hover{border-color:#4a6a59}
+.boss .no{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.boss b{font-size:18px;line-height:1.1}
+.pips{display:flex;gap:5px;margin-top:auto}
+.pip{font-size:10px;font-weight:700;letter-spacing:.06em;padding:1px 5px;border-radius:3px;border:1px solid var(--line);color:var(--muted)}
+.pip.on.t{background:var(--tank);color:#03121f;border-color:var(--tank)}
+.pip.on.h{background:var(--heal);color:#062006;border-color:var(--heal)}
+.pip.on.d{background:var(--dps);color:#260a03;border-color:var(--dps)}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px 18px;color:var(--muted);font-size:14px}
+.controls kbd{font-family:var(--ui);font-weight:700;color:var(--fg);background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px}
+.foot{font-size:12px;color:#6f8476;line-height:1.4;max-width:80ch}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px;max-width:760px;margin:0 auto;width:100%}
+.card h1{font-family:var(--display);font-weight:800;font-size:clamp(34px,6vw,54px);line-height:1;margin:0;color:var(--gold);text-wrap:balance}
+.card p{margin:0;line-height:1.45;max-width:65ch}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.cols ul{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:6px;line-height:1.35}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btn{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px 18px;font-size:16px;font-weight:600;cursor:pointer}
+.btn.go{background:var(--gold);color:#2a1900;border-color:var(--gold)}
+.res-reason{font-size:18px;font-weight:600}
+.res-tip{color:var(--soak)}
+.stat{color:var(--muted);font-variant-numeric:tabular-nums}
+
+@media (max-width:640px){
+  .roles{grid-template-columns:1fr}
+  #raid{grid-template-columns:repeat(2,minmax(0,62px))}
+  .rf{height:14px;line-height:12px;font-size:9px}
+  .ab{width:62px;height:50px}.ab .n{font-size:11px}
+  #hud{gap:6px}
+  .bf{flex-basis:150px}
+}
+@media (prefers-reduced-motion:reduce){#alert{transition:none}}
+</style>
+
+<div id="app">
+  <div id="bossbar"></div>
+  <div id="stage">
+    <div id="arena">
+      <canvas id="cv" width="1000" height="700" aria-label="Raid arena"></canvas>
+      <div id="raid"></div>
+      <div id="assign"></div>
+      <div id="alert"></div>
+      <div id="count"></div>
+      <div id="timer"></div>
+    </div>
+  </div>
+  <div id="hud">
+    <div id="me">
+      <div class="bar hp" id="myhp"><i></i><b></b></div>
+      <div class="bar mp" id="mymp" hidden><i></i><b></b></div>
+      <div id="debs"></div>
+    </div>
+    <div id="abil"></div>
+  </div>
+</div>
+
+<div class="ov" id="menu">
+  <div class="wrap">
+    <div class="brand">
+      <h1>Pineapple Abyss</h1>
+      <p>A Heroic raid trainer for Midnight Season 2. Learn the Venomous Abyss and Kith'ix as a tank, healer or damage dealer before you pull the real thing.</p>
+    </div>
+    <section class="raidgrp">
+      <div class="eyebrow">Pick your role</div>
+      <div class="roles" id="roles"></div>
+    </section>
+    <section class="raidgrp">
+      <h2>The Venomous Abyss</h2>
+      <div class="bosses" id="bl1"></div>
+    </section>
+    <section class="raidgrp">
+      <h2>The Unbinding of Kith'ix</h2>
+      <div class="bosses" id="bl2"></div>
+    </section>
+    <section class="raidgrp">
+      <div class="eyebrow">Controls</div>
+      <div class="controls">
+        <div><kbd>W A S D</kbd> or arrows: move</div>
+        <div><kbd>Shift</kbd>: dash</div>
+        <div><kbd>Space</kbd> <kbd>E</kbd> <kbd>Q</kbd>: role abilities</div>
+        <div>Click an enemy to target it, <kbd>Tab</kbd> cycles</div>
+        <div>Healer: click a raid frame to heal it</div>
+        <div><kbd>Esc</kbd>: pause. Touch: drag on the left half to move</div>
+      </div>
+    </section>
+    <p class="foot">Unofficial fan-made training game, not affiliated with Blizzard Entertainment. Mechanics are simplified from community Heroic guides (Wowhead, Method, Icy Veins) as of patch 12.1.5, October 2026. Your progress stays in this browser.</p>
+  </div>
+</div>
+
+<div class="ov dim" id="brief" hidden>
+  <div class="card">
+    <div class="eyebrow" id="br-eye"></div>
+    <h1 id="br-name"></h1>
+    <p id="br-blurb"></p>
+    <div class="cols">
+      <div><div class="eyebrow" id="br-rolehead"></div><ul id="br-role"></ul></div>
+      <div><div class="eyebrow">Everyone</div><ul id="br-all"></ul></div>
+    </div>
+    <div class="btns"><button class="btn go" id="br-go">Pull boss</button><button class="btn" id="br-back">Back to bosses</button></div>
+  </div>
+</div>
+
+<div class="ov dim" id="result" hidden>
+  <div class="card">
+    <div class="eyebrow" id="rs-eye"></div>
+    <h1 id="rs-head"></h1>
+    <p class="res-reason" id="rs-reason"></p>
+    <p class="res-tip" id="rs-tip"></p>
+    <p class="stat" id="rs-stat"></p>
+    <div class="btns"><button class="btn go" id="rs-retry">Pull again</button><button class="btn" id="rs-next">Next boss</button><button class="btn" id="rs-menu">Boss list</button></div>
+  </div>
+</div>
+
+<div class="ov dim" id="pause" hidden>
+  <div class="card">
+    <h1>Paused</h1>
+    <div class="btns"><button class="btn go" id="ps-resume">Resume</button><button class="btn" id="ps-restart">Restart pull</button><button class="btn" id="ps-menu">Leave fight</button></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= utilities ================= */
+const W=1000,H=700,TAU=Math.PI*2;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const rint=(a,b)=>Math.floor(rnd(a,b+1));
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const D=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const ang=(a,b)=>Math.atan2(b.y-a.y,b.x-a.x);
+const wrapA=a=>{while(a>Math.PI)a-=TAU;while(a<-Math.PI)a+=TAU;return a;};
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function segDist(px,py,x1,y1,x2,y2){const dx=x2-x1,dy=y2-y1,l=dx*dx+dy*dy;let t=l?((px-x1)*dx+(py-y1)*dy)/l:0;t=clamp(t,0,1);return Math.hypot(px-(x1+t*dx),py-(y1+t*dy));}
+function rgba(hex,a){const n=parseInt(hex.slice(1),16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
+function shade(hex,amt){const n=parseInt(hex.slice(1),16);const f=v=>clamp(v+amt,0,255);return `rgb(${f(n>>16&255)},${f(n>>8&255)},${f(n&255)})`;}
+const fmtT=s=>{s=Math.max(0,Math.floor(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
+const $=s=>document.querySelector(s);
+
+const cv=$('#cv'),ctx=cv.getContext('2d');
+let ROLE='dps',G=null,P=null,screen='menu',selBoss=0,scale=1,dpr=1;
+const keys={};
+const joy={on:false,id:null,x0:0,y0:0,vx:0,vy:0,x:0,y:0};
+let progress={};
+try{progress=JSON.parse(localStorage.getItem('pa-progress')||'{}')||{};}catch(e){progress={};}
+try{const r=localStorage.getItem('pa-role');if(r==='tank'||r==='healer'||r==='dps')ROLE=r;}catch(e){}
+function saveProg(){try{localStorage.setItem('pa-progress',JSON.stringify(progress));localStorage.setItem('pa-role',ROLE);}catch(e){}}
+const ROLE_C={tank:'#5ea9ff',healer:'#79e079',dps:'#ff7b5c'};
+const ROLE_N={tank:'Tank',healer:'Healer',dps:'Damage'};
+const BOT_NAMES=['Pinesworth','Bromelia','Spikeleaf','Crownie','Rindwalker','Coladra','Juicebox','Coreheart','Sliceguard','Tropica','Ananaz'];
+
+/* ================= core helpers used by boss scripts ================= */
+function after(t,fn,tag){G.timers.push({at:G.t+t,fn,tag});}
+function every(p,fn,first,tag){G.timers.push({at:G.t+(first==null?p:first),p,fn,tag});}
+function clearTag(tag){G.timers=G.timers.filter(x=>x.tag!==tag);}
+function runTimers(){const due=G.timers.filter(x=>G.t>=x.at);for(const x of due){if(x.p)x.at+=x.p;else{const i=G.timers.indexOf(x);if(i>=0)G.timers.splice(i,1);else continue;}if(G.over)return;x.fn();}}
+
+function alert(text,kind='info',dur=2.4){if(!G)return;const now=G.t;if(G.lastAlert===text&&now-G.lastAlertT<1.2)return;G.lastAlert=text;G.lastAlertT=now;G.alertMsg={text,kind,t:dur};}
+function info(k,v){if(v==null)delete G.info[k];else G.info[k]=v;}
+function floatAt(x,y,text,color='#fff'){G.floaters.push({x,y,text,color,t:1.2});}
+function fxRing(x,y,r,color){G.fx.push({k:'ring',x,y,r,t:.5,t0:.5,color});}
+
+function you(key,p=.55){const c=G.youCount[key]||0;let r=Math.random()<p;if(c>=2)r=true;G.youCount[key]=r?0:c+1;return r;}
+function bots(n,f){return shuffle(G.bots.filter(b=>b.alive&&b.role!=='tank'&&(!f||f(b)))).slice(0,n);}
+function botGo(b,x,y,dur){if(!b)return;b.goal={x:clamp(x,20,980),y:clamp(y,20,680)};b.goalT=dur;}
+function raidCenter(){return G.rc||{x:G.raidSpot.x,y:G.raidSpot.y};}
+function raidAvg(){const a=[P,...G.bots.filter(b=>b.alive)];return a.reduce((s,b)=>s+(b===P?P.hp/P.max*100:b.hp),0)/a.length;}
+
+function mkBoss(o){const b=Object.assign({hp:1,alive:true,immune:false,untargetable:false,hidden:false,dr:0,vuln:1,energy:0,speed:95,face:Math.PI/2,cast:null,required:true,r:34,shield:0,stationary:false,swing:1.6,stun:0},o);b.short=b.short||b.name;b.tankSpot=b.tankSpot||{x:b.x,y:b.y};G.bosses.push(b);return b;}
+function setCast(b,name,dur,o){b.cast=Object.assign({name,t:dur,dur},o||{});}
+function zone(o){const z=Object.assign({type:'circle',kind:'danger',t:2,dmg:0,src:'',r:50,w:40,len:500,arc:1,ang:0,lock:.5,live:0,need:1,mine:false,label:''},o);z.t0=Math.max(.01,z.t);z.bots=[];if(z.kind==='soak')assignSoak(z);G.zones.push(z);return z;}
+function puddle(o){const p=Object.assign({r:50,t:10,dps:10,color:'#93d64e',name:'Puddle',cd:0},o);G.puddles.push(p);return p;}
+function addMob(o){const a=Object.assign({r:13,hp:5,speed:30,color:'#8a9',name:'Add',arrive:14,dr:0},o);a.maxHp=a.hp;G.adds.push(a);return a;}
+function debuffP(name,o){P.debuffs[name]={t:o.dur,dur:o.dur,dot:o.dot||0,color:o.color||'#ccc',dispel:!!o.dispel,el:o.el,stacks:o.stacks,
+  onExpire:()=>{o.onExpire&&o.onExpire();o.onEnd&&o.onEnd();},onDispel:()=>{o.onDispel&&o.onDispel();o.onEnd&&o.onEnd();}};}
+function showDeb(name,stacks,color){P.debuffs[name]={t:1e9,dur:1e9,stacks,color,show:true};}
+function botDebuff(b,name,o){b.deb=Object.assign({name,t:o.dur,dot:0},o);}
+function raidDot(dps,dur,src){G.raidDots.push({dps,t:dur,src});}
+function dmgMult(){let m=P.vuln||1;if(P.buff.wall)m*=.4;if(P.buff.def)m*=.6;if(P.buff.ward)m*=.7;return m;}
+function hurt(n,src,silent){if(!G||G.over||G.countdown>0)return;n*=dmgMult();P.hp-=n;if(!silent&&n>=1){floatAt(P.x,P.y-20,'-'+Math.round(n),'#ff8a7a');G.flash=Math.min(.5,G.flash+n/120);G.shake=Math.min(8,G.shake+n/12);}
+  if(P.hp<=0){P.hp=0;lose(`You died to ${src}.`,tipFor(src));}}
+function raidHit(n,src){if(!G||G.over)return;const v=G.raidVuln;hurt(n*v,src);const w=P.buff.ward?.7:1;for(const b of G.bots){if(!b.alive)continue;b.hp-=n*v*w*rnd(.85,1.15);if(b.hp<=0)killBot(b,src);}}
+function killBot(b,src){if(!b.alive)return;b.alive=false;b.hp=0;b.deb=null;b.num=0;G.deaths++;floatAt(b.x,b.y-14,b.name+' died','#ff8a7a');
+  const dead=G.bots.filter(x=>!x.alive).length;if(dead>=5)lose(`Too many raiders died (last to ${src}).`,ROLE==='healer'?'Keep Healing Pulse rolling and save Tranquil Ward for the big hits.':'Most deaths came from raid damage. Dodge and soak cleanly so the healers can keep up.');}
+function tipFor(src){const t=(G.def.tipsFor||{})[src];if(t)return t;return 'Watch the coloured ground markers: red means move out, gold means soak, cyan marks a soak that is yours.';}
+function lose(reason,tip){if(!G||G.over)return;G.over=true;G.result={win:false,reason,tip:tip||''};setTimeout(showResult,1100);}
+function win(){if(G.over)return;G.over=true;const id=G.def.id;progress[id]=progress[id]||{};progress[id][ROLE]=true;saveProg();G.result={win:true};setTimeout(showResult,1300);}
+
+function tankEnt(b){if(b.tankedBy==='player'){if(G.tk&&G.tk.boss===b&&G.tk.active==='cotank')return b.cotank;return P;}return b.botTank||null;}
+function assignTanks(){const tb=G.tankBots.filter(t=>t.alive);let i=0;
+  for(const b of G.bosses){b.tankedBy=null;b.botTank=null;b.cotank=null;}
+  for(const b of G.bosses){if(!b.alive||b.untargetable)continue;
+    if(ROLE==='tank'&&b.playerTanks){b.tankedBy='player';b.cotank=tb[0]||null;if(!G.def.noSwap&&b.cotank&&(!G.tk||G.tk.boss!==b))G.tk={boss:b,active:'player',p:0,c:0,acc:0};}
+  }
+  for(const b of G.bosses){if(!b.alive||b.untargetable||b.tankedBy==='player')continue;
+    if(ROLE==='tank'){b.botTank=tb[0]||null;}else{b.botTank=tb[i]||null;i++;}
+  }
+}
+function tankBotPos(bt){for(const b of G.bosses){if(!b.alive||b.hidden)continue;
+  if(b.botTank===bt||(b.cotank===bt&&tankEnt(b)===bt))return{x:b.x+Math.cos(b.face)*(b.r+14),y:b.y+Math.sin(b.face)*(b.r+14)};}
+  for(const b of G.bosses){if(b.alive&&b.cotank===bt){const a=b.face+Math.PI/2;return{x:b.x+Math.cos(a)*(b.r+34),y:b.y+Math.sin(a)*(b.r+34)};}}
+  return null;}
+
+/* ================= zone geometry ================= */
+function inZone(z,p,pad=0){switch(z.type){
+  case 'circle':return Math.hypot(p.x-z.x,p.y-z.y)<=z.r+pad;
+  case 'line':{const ex=z.x+Math.cos(z.ang)*z.len,ey=z.y+Math.sin(z.ang)*z.len;return segDist(p.x,p.y,z.x,z.y,ex,ey)<=z.w/2+pad;}
+  case 'cone':{const d=Math.hypot(p.x-z.x,p.y-z.y);if(d>z.r+pad)return false;if(d<pad+4)return true;return Math.abs(wrapA(Math.atan2(p.y-z.y,p.x-z.x)-z.ang))<=z.arc/2;}
+  case 'rect':return p.x>=z.x-pad&&p.x<=z.x+z.w+pad&&p.y>=z.y-pad&&p.y<=z.y+z.h+pad;}
+  return false;}
+function assignSoak(z){const n=Math.max(0,z.need-(z.mine?1:0));const free=G.bots.filter(b=>b.alive&&b.role!=='tank'&&!b.goal).sort((a,b)=>D(a,z)-D(b,z)).slice(0,n);
+  for(const b of free){const a=rnd(0,TAU),d=rnd(0,z.r*.45);botGo(b,z.x+Math.cos(a)*d,z.y+Math.sin(a)*d,z.t+.3);z.bots.push(b);}}
+function fireZone(z){const hitP=inZone(z,P,P.r*.6);
+  if(z.kind==='soak'){const cnt=z.bots.filter(b=>b.alive).length+(hitP?1:0);const ok=cnt>=z.need;for(const b of z.bots)b.goal=null;z.onSoak&&z.onSoak(ok,hitP,z);}
+  else{const spared=z.spare&&z.spare();if(hitP&&z.dmg&&!spared)hurt(z.dmg,z.src);z.onFire&&z.onFire(hitP,z);}
+}
+function avoidPt(x,y){for(let it=0;it<2;it++){
+  for(const z of G.zones){if(z.kind!=='danger'||z.t<=0||z.noAvoid)continue;const p={x,y};if(!inZone(z,p,14))continue;
+    if(z.type==='circle'){const a=Math.atan2(y-z.y,x-z.x)||rnd(0,TAU);x=z.x+Math.cos(a)*(z.r+24);y=z.y+Math.sin(a)*(z.r+24);}
+    else if(z.type==='line'){const nx=-Math.sin(z.ang),ny=Math.cos(z.ang);const s=((x-z.x)*nx+(y-z.y)*ny)>=0?1:-1;const off=z.w/2+24-Math.abs((x-z.x)*nx+(y-z.y)*ny);x+=nx*s*off;y+=ny*s*off;}
+    else if(z.type==='cone'){const a=Math.atan2(y-z.y,x-z.x),d=Math.hypot(x-z.x,y-z.y);const da=wrapA(a-z.ang);const na=z.ang+(da>=0?1:-1)*(z.arc/2+.35);x=z.x+Math.cos(na)*d;y=z.y+Math.sin(na)*d;}
+    else if(z.type==='rect'){const l=x-z.x,r=z.x+z.w-x,t=y-z.y,b=z.y+z.h-y;const m=Math.min(l,r,t,b);if(m===l)x=z.x-24;else if(m===r)x=z.x+z.w+24;else if(m===t)y=z.y-24;else y=z.y+z.h+24;}
+  }
+  for(const p of G.puddles){if(p.dps<=0)continue;const d=Math.hypot(x-p.x,y-p.y);if(d<p.r+12){const a=Math.atan2(y-p.y,x-p.x)||rnd(0,TAU);x=p.x+Math.cos(a)*(p.r+20);y=p.y+Math.sin(a)*(p.r+20);}}
+}return[x,y];}
+
+/* ================= arena floor ================= */
+function renderFloor(def){const c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');const f=def.floor;
+  g.fillStyle=f.base;g.fillRect(0,0,W,H);
+  for(let y=0;y<H;y+=50)for(let x=0;x<W;x+=50){g.fillStyle=shade(f.tile,rint(-9,9));g.fillRect(x+1.5,y+1.5,47,47);g.fillStyle='rgba(255,255,255,.025)';g.fillRect(x+1.5,y+1.5,47,3);}
+  g.strokeStyle='rgba(0,0,0,.35)';g.lineWidth=1.2;for(let i=0;i<45;i++){let x=rnd(0,W),y=rnd(0,H);g.beginPath();g.moveTo(x,y);for(let k=0;k<4;k++){x+=rnd(-24,24);y+=rnd(-24,24);g.lineTo(x,y);}g.stroke();}
+  for(let i=0;i<14;i++){const x=rnd(0,W),y=rnd(0,H),r=rnd(40,120);const gr=g.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,rgba(f.accent,.12));gr.addColorStop(1,rgba(f.accent,0));g.fillStyle=gr;g.fillRect(x-r,y-r,r*2,r*2);}
+  if(def.decor)def.decor(g);
+  if(def.arena==='circle'){const R=def.R;g.save();g.beginPath();g.rect(0,0,W,H);g.arc(500,350,R,0,TAU,true);g.fillStyle='#020605';g.fill('evenodd');
+    for(let i=0;i<70;i++){g.fillStyle=`rgba(147,214,78,${rnd(.02,.08)})`;g.beginPath();const a=rnd(0,TAU),d=rnd(R+20,700);g.arc(500+Math.cos(a)*d,350+Math.sin(a)*d,rnd(2,7),0,TAU);g.fill();}
+    g.restore();g.strokeStyle='#5b7a63';g.lineWidth=5;g.beginPath();g.arc(500,350,R,0,TAU);g.stroke();g.strokeStyle='rgba(0,0,0,.5)';g.lineWidth=2;g.beginPath();g.arc(500,350,R-6,0,TAU);g.stroke();}
+  const vg=g.createRadialGradient(500,350,250,500,350,700);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.55)');g.fillStyle=vg;g.fillRect(0,0,W,H);
+  return c;}
+
+/* ================= BOSS SCRIPTS ================= */
+const COFFINS=[[{x:95,y:105},{x:165,y:80},{x:80,y:175}],[{x:905,y:105},{x:835,y:80},{x:920,y:175}],[{x:95,y:600},{x:165,y:625},{x:80,y:525}],[{x:905,y:600},{x:835,y:625},{x:920,y:525}]];
+function nekRestless(){const N=G.N,b=N.b;const groups=shuffle([0,1,2,3]).slice(0,2);N.glow={groups,t:3};
+  const g0=COFFINS[groups[0]][0];if(tankEnt(b)!==P)b.tankSpot={x:(g0.x+500)/2,y:(g0.y+350)/2};else alert('Coffins are glowing: drag Nek\'zali over so her cleave hits the Amani','info');
+  after(3,()=>{N.glow=null;for(const gi of groups)for(const c of COFFINS[gi])addMob({name:'Restless Amani',x:c.x,y:c.y,r:12,hp:5.5,speed:30,to:{x:500,y:350},arrive:52,color:'#9c8fc9',prio:1,
+    onArrive:()=>{b.energy+=5;raidHit(9,'Soulcoil Well');raidDot(.8,10,'Soulcoil');floatAt(500,320,'+5 energy','#c9a6ff');alert('An Amani reached the Well','warn');}});},'p');}
+function nekBarrage(){const b=G.N.b;if(b.immune)return;setCast(b,'Possession Barrage',3);
+  zone({type:'line',from:b,x:b.x,y:b.y,aim:()=>tankEnt(b)||P,len:720,w:54,t:3,lock:.5,src:'Possession Barrage',dmg:60,spare:()=>tankEnt(b)===P,
+    onFire:(h,z)=>{const rc=raidCenter();if(tankEnt(b)===P){const d=D(P,rc);if(d<280){raidHit(8+26*(1-d/280),'Possession Barrage');alert('Barrage went off near the raid: walk the boss further out','warn');}}
+      const ex=z.x+Math.cos(z.ang)*z.len,ey=z.y+Math.sin(z.ang)*z.len;if(segDist(rc.x,rc.y,z.x,z.y,ex,ey)<z.w/2+40){raidHit(22,'Possession Barrage');alert('The Barrage line crossed the raid','warn');}}});
+  if(tankEnt(b)===P)alert('Possession Barrage: point it away from the raid','you');}
+function nekRite(){const N=G.N,b=N.b;if(b.immune)return;b.x=500;b.y=268;setCast(b,'Soulcoil Rite',4);b.energy+=20;G.raidVuln+=.12;N.burn=(N.burn||0)+1;showDeb('Ritual Burn',N.burn,'#c9a6ff');
+  for(let i=0;i<5;i++)after(i*.9,()=>raidHit(5,'Soulcoil Rite'),'p');
+  for(let w=0;w<2;w++)after(w*2.2,()=>{for(let i=0;i<7;i++)zone({x:rnd(80,920),y:rnd(80,620),r:55,t:2,dmg:40,src:'Soulcoil Rite'});zone({x:P.x,y:P.y,r:55,t:2,dmg:40,src:'Soulcoil Rite'});},'p');
+  alert('Soulcoil Rite: dodge the circles','warn');}
+function nekPyre(){const mi=you('pyre',.7)?rint(0,2):-1;[{x:330,y:480},{x:500,y:560},{x:670,y:480}].forEach((s,i)=>zone({kind:'soak',x:s.x,y:s.y,r:55,t:5,need:3,mine:i===mi,label:'Pyre',src:'Hungering Pyre',
+  onSoak:(ok,h,z)=>{if(z.mine&&!h){debuffP('Hungering Pyre',{dur:6,dot:4,color:'#ff9b4a',onExpire:()=>{hurt(30,'Hungering Pyre');raidHit(12,'Hungering Pyre');}});alert('You missed your Pyre: it will explode on you','warn');}else if(!ok)raidHit(14,'Hungering Pyre');}}));
+  if(mi>=0)alert('Soak your Hungering Pyre (cyan circle)','you');}
+function nekIntermission(){const N=G.N,b=N.b;clearTag('p1');b.immune=true;b.x=500;b.y=300;b.hp=.5;b.stationary=true;b.cast=null;alert('Nek\'zali hides in the Well: kill the Echo of Jawae','warn');
+  const j=addMob({name:'Echo of Jawae',x:500,y:160,r:24,hp:9,speed:0,color:'#b28cff',prio:3,botMult:1.5,onDeath:()=>nekPhase2()});N.jawae=j;
+  every(14,()=>{if(!N.jawae||N.jawae.dead)return;const tg=Math.random()<.5?P:(bots(1)[0]||P);setCast(b,"Jawae's channel",2.6);zone({type:'line',from:j,x:j.x,y:j.y,aim:()=>tg,len:760,w:62,t:2.6,lock:.6,src:"Jawae's Blast",dmg:55});},4,'int');
+  every(13,nekPyre,7,'int');}
+function nekPhase2(){const N=G.N,b=N.b;clearTag('int');N.jawae=null;G.phase=3;b.immune=false;b.stationary=false;b.energy=0;G.lust=40;raidDot(1.2,1e9,'Uncoiling');alert('Phase 2: Bloodlust! Kill her before 100 energy','good');}
+
+function sentInfo(){info('side',`Your side: ${G.side==='green'?'GREEN (Breath)':'RED (Blood)'}`);info('mark',`Marks: ${G.S.mark}`);}
+function sentTimers(){every(20,sentDroplets,4,'cyc');every(30,sentCoag,12,'cyc');every(22,sentBlood,8,'cyc');every(15,()=>{G.S.mark=Math.min(3,G.S.mark+1);sentInfo();},15,'cyc');every(3,()=>raidHit(1+G.S.mark*.8,"Mark of Ula'tek"),3,'cyc');}
+function sentDroplets(){const A=G.S.A;if(G.S.stasis||!A.alive)return;setCast(A,'Toxic Droplets',1);const mi=(G.side==='green'&&ROLE!=='tank'&&you('drop',.75))?rint(0,3):-1;
+  for(let i=0;i<4;i++){const a=i*TAU/4+rnd(-.5,.5),d=rnd(120,180);zone({kind:'soak',touch:true,x:clamp(A.x+Math.cos(a)*d,40,960),y:clamp(A.y+Math.sin(a)*d,40,660),r:22,t:9,need:1,mine:i===mi,label:'Droplet',src:'Toxic Droplet',color:'#93d64e',
+    onSoak:(ok,h,z)=>{if(!ok){raidHit(26,'Noxious Blast');alert('A droplet erupted','warn');return;}if(!A.alive)return;zone({type:'line',x:z.x,y:z.y,ang:ang(z,A),len:D(z,A),w:34,t:1.4,lock:9,src:'Living Venom',dmg:38});}});}
+  if(mi>=0)alert('Pop your Toxic Droplet, then step out of the venom line','you');}
+function sentCoag(){const A=G.S.A;if(G.S.stasis||!A.alive)return;addMob({name:'Venom Coagulation',x:A.x+rnd(-90,90),y:A.y+rnd(70,130),r:20,hp:6,speed:0,color:'#9bd84a',prio:3,tick:(a,dt)=>{a.pt=(a.pt||0)+dt;if(a.pt>=2.5){a.pt=0;raidHit(2.5,'Contaminate');}}});alert('Venom Coagulation: kill it fast','warn');}
+function sentBlood(){const B=G.S.B;if(G.S.stasis||!B.alive)return;setCast(B,'Blood Infusion',1);
+  if(G.side==='red'&&ROLE!=='tank'&&you('blood',.65)){debuffP("Blood of Ula'tek",{dur:9,dot:2.5,color:'#d6455c',dispel:true,onEnd:()=>{puddle({x:P.x,y:P.y,r:56,t:1e9,dps:18,slow:true,color:'#a8203a',name:'Blood Pool'});if(Math.hypot(P.x-500,P.y-350)<230)alert('Blood pool dropped in the middle: use the edges','warn');}});alert('Blood on you: walk to the room edge before it ends','you');}
+  for(const bt of bots(2,b=>b.side==='red')){const ex=bt.x<500?60:940,ey=clamp(bt.y+rnd(-80,80),60,640);botGo(bt,ex,ey,8.5);botDebuff(bt,'Blood',{dur:9,dot:3,dispel:true,color:'#d6455c',onEnd:(b)=>puddle({x:b.x,y:b.y,r:56,t:1e9,dps:18,slow:true,color:'#a8203a',name:'Blood Pool'})});}}
+function sentStasis(){const S=G.S;S.stasis=true;clearTag('cyc');for(const b of[S.A,S.B]){b.immune=true;b.forceSpot=true;setCast(b,'Vitriolic Stasis',14);}S.A.tankSpot={x:450,y:330};S.B.tankSpot={x:550,y:330};
+  S.solved=false;S.pmark=S.mark;const need=4-S.mark;const nb=bots(7);const nums=[need];if(need>=2)nums.push(1,need-1);while(nums.length<nb.length)nums.push(rint(1,3));shuffle(nums);
+  nb.forEach((bt,i)=>{const a=i/nb.length*TAU+.3;botGo(bt,500+Math.cos(a)*230,360+Math.sin(a)*190,14);bt.num=nums[i];});
+  alert(`Vitriolic Stasis: you carry ${S.mark}. Merge into allies to make exactly 4`,'you',4);after(14,sentStasisEnd,'st');}
+function sentStasisEnd(){const S=G.S;if(!S.solved){hurt(65,'Vitriolic Stasis');raidHit(12,'Vitriolic Stasis');}for(const b of G.bots)b.num=0;S.stasis=false;
+  for(const b of[S.A,S.B]){b.immune=false;b.forceSpot=false;b.energy=0;}
+  if(S.A.alive&&S.B.alive){const diff=S.A.hp-S.B.hp;if(Math.abs(diff)>.04){const low=diff<0?S.A:S.B;low.hp+=Math.abs(diff)*.5;alert(`${low.short} absorbed the fluids and healed: keep their health even`,'warn',3);}}
+  G.side=G.side==='green'?'red':'green';for(const b of G.bots)b.side=b.side==='green'?'red':'green';
+  if(ROLE==='tank'){S.A.playerTanks=G.side==='green';S.B.playerTanks=G.side==='red';assignTanks();}
+  S.A.tankSpot={x:250,y:330};S.B.tankSpot={x:750,y:330};S.mark=1;sentInfo();sentTimers();after(2.6,()=>alert(`Sides swap: you are now on ${G.side.toUpperCase()}`,'info'),'cyc');}
+
+function expBlink(){const k=G.E.k;if(!k.alive)return;const mine=you('blink',.6);const tgt=mine?P:bots(1)[0];if(!tgt)return;setCast(k,'Blink Nova',5);
+  zone({type:'circle',kind:'mark',follow:tgt,x:tgt.x,y:tgt.y,r:40,t:5,lock:0,src:'Blink Nova',noAvoid:true,label:mine?'YOU':'',onFire:()=>{const rc=raidCenter();const d=D(tgt,rc);raidHit(6+44*clamp(1-d/320,0,1),'Blink Nova');fxRing(tgt.x,tgt.y,320,'#62bdff');if(mine&&d<200)alert('Blink Nova was too close to the raid','warn');}});
+  if(mine)alert('Blink Nova on you: run away from the raid','you');else botGo(tgt,tgt.x<500?70:930,rnd(450,650),5.5);}
+function expVolley(){const k=G.E.k;if(!k.alive)return;setCast(k,'Frostfire Volley',2);
+  after(2,()=>{if(G.over)return;for(let i=0;i<3;i++){puddle({x:rnd(110,890),y:rnd(150,640),r:50,t:30,dps:0,color:'#ff7a2e',el:'fire',name:'Fire patch'});puddle({x:rnd(110,890),y:rnd(150,640),r:50,t:30,dps:0,color:'#62bdff',el:'frost',name:'Frost patch'});}
+    const el=Math.random()<.5?'fire':'frost';const nm=el==='fire'?'Burning Flames':'Piercing Frost';
+    debuffP(nm,{dur:13,dot:2.5,color:el==='fire'?'#ff7a2e':'#62bdff',el,onExpire:()=>{hurt(70,'Elemental Explosion');raidHit(18,'Elemental Explosion');}});
+    alert(`${nm}: step into a ${el==='fire'?'FROST':'FIRE'} patch to clear it`,'you',3);raidHit(8,'Frostfire Volley');},'p');}
+function expCrates(){const g=G.E.g;if(!g.alive)return;setCast(g,'Toss Crates',1.5);const mi=you('crate',.6)?rint(0,1):-1;
+  for(let i=0;i<2;i++){const c={kind:'crate',x:rnd(140,860),y:rnd(380,640),r:16,mine:i===mi,t:25,prog:0};
+    if(!c.mine){const bt=bots(1)[0];if(bt)botGo(bt,c.x,c.y+20,9);}
+    c.update=(c,dt)=>{c.t-=dt;if(D(c,P)<46){c.prog+=dt;if(c.prog>=1.4){c.done=true;raidHit(4,'Splinters');floatAt(c.x,c.y,'Crate broken','#ffd34d');}}else c.prog=Math.max(0,c.prog-dt*.5);
+      if(!c.mine&&25-c.t>9&&!c.done){c.done=true;raidHit(4,'Splinters');}if(c.t<=0&&!c.done){c.done=true;raidHit(24,'Relic Rupture');alert('A crate ruptured','warn');}};G.pickups.push(c);}
+  if(mi>=0)alert('Break your crate: stand next to it','you');}
+function expThud(){const n=G.E.n;if(!n.alive)return;setCast(n,'Mighty Thud',5);const mi=rint(0,1);const base=raidCenter();
+  [-1,1].forEach((s,i)=>zone({kind:'soak',x:clamp(base.x+s*110,90,910),y:clamp(base.y-20,120,640),r:62,t:5,need:5,mine:i===mi,label:'Thud',src:'Mighty Thud',onSoak:(ok,h,z)=>{if(!ok)raidHit(24,'Mighty Thud');else if(h&&!z.mine)hurt(25,'Mighty Thud');}}));
+  alert('Mighty Thud: split into your (cyan) soak','you');}
+function expFish(){const E=G.E;const alive=[E.g,E.k,E.n].filter(b=>b.alive);if(!alive.length)return;const tgt=pick(alive);E.poss=tgt;E.fed=false;
+  setCast(E.m,'Final Ascension',11,{onDone:()=>{if(E.poss===tgt&&!E.fed)lose("Mor'zahi finished Final Ascension.","Feed a Disgusting Fish to the glowing, possessed explorer before the cast ends.");}});
+  const mine=you('fish',.6);const f={kind:'fish',x:rnd(150,850),y:rnd(430,640),r:14,mine};
+  f.update=(f,dt)=>{if(f.mine){if(D(f,P)<f.r+P.r+4){f.done=true;P.carry='fish';alert(`Feed the fish to ${tgt.short}!`,'you');}}
+    else{if(!f.bot)f.bot=bots(1)[0];if(f.bot)botGo(f.bot,f.x,f.y,.3);f.age=(f.age||0)+dt;if(f.age>3.5){f.done=true;if(f.bot)botGo(f.bot,tgt.x,tgt.y+tgt.r,2.5);after(2.5,()=>expFed(tgt),'p');}}};
+  G.pickups.push(f);if(mine)alert(`Grab the Disgusting Fish and feed it to ${tgt.short}`,'you',3);else alert(`Final Ascension on ${tgt.short}: an ally has the fish`,'info');}
+function expFed(tgt){const E=G.E;if(E.fed||G.over)return;E.fed=true;E.m.cast=null;E.poss=null;raidHit(12,'Spirit Backlash');raidDot(1.2,12,'Backlash');floatAt(tgt.x,tgt.y-40,'Fed!','#ffd34d');}
+
+const VF={fire:{x:500,y:92,c:'#ff7a2e',n:'Fire'},blood:{x:160,y:600,c:'#d6455c',n:'Blood'},shadow:{x:840,y:600,c:'#b48cff',n:'Shadow'}};
+const VPAIRS=[['fire','blood'],['blood','shadow'],['shadow','fire']];
+function vNear(b){return Object.keys(VF).sort((a,c)=>D(b,VF[a])-D(b,VF[c])).slice(0,2);}
+function vPairSpot(p){const a=VF[p[0]],c=VF[p[1]];const mx=(a.x+c.x)/2,my=(a.y+c.y)/2;return{x:mx+(500-mx)*.35,y:my+(350-my)*.35};}
+function vashImbibe(){const V=G.V,b=V.b;b.energy=0;const pair=vNear(b);const key=pair.slice().sort().join('+');const dbl=key===V.last;V.last=key;
+  setCast(b,'Imbibe',2.5,{onDone:()=>{raidHit(dbl?34:16,'Imbibe');if(dbl)alert('Same two fountains twice: Toxic Vapor doubled!','warn',3);
+    for(const f of pair){const F=VF[f];for(let i=0;i<2;i++)addMob({name:'Living Venom',x:F.x+rnd(-30,30),y:F.y+rnd(-20,20),r:13,hp:5.5,speed:24,to:{x:500,y:350},arrive:48,color:F.c,prio:2,
+        onArrive:()=>{raidHit(20,'Malignant Burst');raidDot(1,30,'Malignant Burst');alert('A Living Venom reached the Cavity','warn');}});
+      if(f==='fire')for(let i=0;i<2;i++)addMob({name:'Burning Venom',x:F.x+rnd(-70,70),y:F.y+45,r:12,hp:3,speed:0,color:'#ff9a3c',prio:1,tick:(a,dt)=>{a.pt=(a.pt||0)+dt;if(a.pt>=2){a.pt=0;raidHit(2,'Burning Presence');}},onDeath:()=>raidHit(6,'Caustic Surge')});}
+    V.seq++;if(tankEnt(b)!==P){const nxt=VPAIRS.find(p=>p.slice().sort().join('+')!==V.last&&p.slice().sort().join('+')!==key)||VPAIRS[V.seq%3];b.tankSpot=vPairSpot(nxt);}
+  }});alert(`Imbibe: ${pair.map(f=>VF[f].n).join(' + ')}`,'info');}
+function vashInfection(){if(ROLE==='healer'){for(const bt of bots(2))botDebuff(bt,'Siphoning Infection',{dur:15,dot:4.5,dispel:true,color:'#9be14b',onDispel:()=>{raidHit(9,'Siphon Burst');if(raidAvg()<55)alert('Dispelled at low raid health: wait for heals first','warn');},onExpire:(bt)=>killBot(bt,'Siphoning Infection')});alert('Siphoning Infection on 2 allies: dispel them one at a time (E)','you',3);}
+  if(you('infect',.6)){debuffP('Exploding Infection',{dur:9,dot:1.5,color:'#ff7a2e',onExpire:()=>{const d=D(P,raidCenter());raidHit(4+36*clamp(1-d/320,0,1),'Exploding Infection');hurt(12,'Exploding Infection');fxRing(P.x,P.y,140,'#ff7a2e');if(d<220)alert('The explosion was too close to the raid','warn');}});alert('Exploding Infection: get away from the raid!','you');}
+  else{const bt=bots(1)[0];if(bt)botGo(bt,bt.x<500?70:930,rnd(200,600),9);}}
+function vashCatalyst(){const b=G.V.b;setCast(b,'Malignant Catalyst',2,{onDone:()=>{raidHit(10,'Malignant Catalyst');const mi=you('bile',.65)?rint(0,3):-1;
+  for(let i=0;i<4;i++){const a=i*TAU/4+rnd(-.4,.4),d=rnd(150,240);zone({kind:'soak',x:500+Math.cos(a)*d,y:350+Math.sin(a)*d*.85,r:38,t:4,need:1,mine:i===mi,label:'Bile',src:'Catalytic Bile',onSoak:(ok)=>{if(!ok){raidHit(22,'Catalytic Bile');alert('A bile spray landed on nobody','warn');}}});}
+  if(mi>=0)alert('Catch your Catalytic Bile (cyan)','you');}});}
+
+const TUN=[-90,-30,30,90,150,210].map(d=>d*Math.PI/180);
+function szApex(){const Z=G.Z,b=Z.b;if(Z.mael)return;Z.next=pick(TUN.filter(a=>Math.abs(wrapA(a-Math.PI/2))>.6));info('wind',`Next wind: ${dirName(Z.next)} tunnel`);
+  const seq=shuffle(['Ravage','Lash','Ravage']);seq.splice(rint(0,1),0,'Mutilate');seq.splice(rint(2,4),0,'Mutilate');let g='A';
+  seq.forEach((m,i)=>after(i*2.3,()=>{if(m==='Mutilate'){const grp=g;g='B';szMutilate(grp);}else if(m==='Ravage')szRavage();else szLash();},'p'));
+  after(11.5,szSurge,'p');after(18,szWind,'p');alert('Apex Predator','info');}
+function dirName(a){const d=Math.round(((a*180/Math.PI)+360)%360);return{270:'north',330:'north-east',30:'south-east',90:'south',150:'south-west',210:'north-west'}[d]||'side';}
+function szMutilate(grp){const b=G.Z.b;setCast(b,`Mutilate: group ${grp}`,1.8);const tg=G.groupSpots[grp];
+  zone({type:'cone',x:b.x,y:b.y,ang:ang(b,tg),arc:.9,r:330,t:1.8,lock:9,color:'#ffd34d',label:`Group ${grp} soak`,src:'Mutilate',noAvoid:true,
+    onFire:(h)=>{const mine=G.grp===grp&&ROLE!=='tank';if(h){if(P.debuffs['Mutilated']){hurt(999,'Mutilate while Mutilated');return;}hurt(18,'Mutilate');debuffP('Mutilated',{dur:12,color:'#ff5b3a'});if(!mine&&ROLE!=='tank')alert('Not your group: that Mutilated debuff will kill you on the next soak','warn',3);}
+      else if(mine){raidHit(22,'Mutilate (under-soaked)');alert('Your group was a soaker short','warn');}}});
+  if(G.grp===grp&&ROLE!=='tank')alert(`Mutilate on group ${grp}: soak it`,'you');}
+function szRavage(){const b=G.Z.b;const tk=tankEnt(b)||P;setCast(b,'Ravage',1.6);zone({type:'circle',follow:tk,x:tk.x,y:tk.y,r:46,t:1.6,lock:.3,src:'Ravage',dmg:45,spare:()=>tankEnt(b)===P,
+  onFire:(h)=>{if(tankEnt(b)===P){if(h)hurt(14,'Ravage');else{raidHit(28,'Ravage');alert('Ravage needs the tank inside it','warn');}}}});}
+function szLash(){const b=G.Z.b;setCast(b,'Tail Lash',1.5);const s=Math.random()<.5?-1:1;zone({type:'cone',x:b.x,y:b.y,ang:ang(G.raidSpot,b)+Math.PI+s*1.3,arc:1.6,r:240,t:1.5,lock:9,src:'Tail Lash',dmg:42});}
+function szMarker(){const a=G.Z.next;return{x:500-Math.cos(a)*175,y:350-Math.sin(a)*175};}
+function szSurge(){const Z=G.Z;const m=szMarker();Z.marker={x:m.x,y:m.y,t:11};
+  if(you('surge',.6)){debuffP('Venomous Surge',{dur:10,dot:2,color:'#93d64e',onExpire:()=>{Z.cysts.push({x:P.x,y:P.y,t:110});const dd=Math.hypot(P.x-m.x,P.y-m.y);if(dd>90)alert('Cyst dropped away from the marker','warn');else alert('Cyst placed','good');}});alert('Venomous Surge: drop your cyst on the marker','you',3);}
+  else{const bt=bots(1)[0];if(bt){botGo(bt,m.x,m.y,10);after(10,()=>Z.cysts.push({x:m.x,y:m.y,t:110}),'p');}}
+  const bt2=bots(1)[0];const pa=G.Z.next+Math.PI/2;if(bt2){botGo(bt2,m.x+Math.cos(pa)*80,m.y+Math.sin(pa)*80,10);after(10,()=>Z.cysts.push({x:m.x+Math.cos(pa)*80,y:m.y+Math.sin(pa)*80,t:110}),'p');}
+  for(const t of[...bots(3),P]){zone({x:t.x,y:t.y,r:50,t:1.8,dmg:32,src:'Caustic Claws',onFire:(h,z)=>puddle({x:z.x,y:z.y,r:46,t:10,dps:14,color:'#6fbf3a',name:'Caustic Residue'})});}}
+function szWind(){const Z=G.Z;const a=Z.next;Z.windTele={a,t:4};alert('Raging Crosswinds: stand by a cyst','warn');
+  after(2,()=>{for(const bt of G.bots){if(!bt.alive||bt.role==='tank')continue;const c=Z.cysts.length?pick(Z.cysts):szMarker();botGo(bt,c.x+rnd(-30,30),c.y+rnd(-30,30),8);}},'p');
+  after(4,()=>{Z.windTele=null;G.wind={x:-Math.cos(a)*225,y:-Math.sin(a)*225};raidHit(6,'Raging Crosswinds');},'p');after(10,()=>{G.wind=null;},'p');}
+function szMaelstrom(){const Z=G.Z,b=Z.b;Z.mael=true;b.energy=0;b.vuln=1.3;setCast(b,'Howling Maelstrom',22);Z.mAng=rnd(0,TAU);alert('Howling Maelstrom: Dig In, +30% damage taken. Hold near a cyst!','warn',3);
+  if(Z.cysts.length<2)for(let i=0;i<2;i++){const a=rnd(0,TAU);Z.cysts.push({x:500+Math.cos(a)*150,y:350+Math.sin(a)*150,t:60});}
+  after(22,()=>{Z.mael=false;G.wind=null;b.vuln=1;},'p');}
+
+function tfStack(n,src){const T=G.T;T.ev+=n;showDeb('Eternal Venom',T.ev,'#93d64e');info('ev',`Eternal Venom: ${T.ev}/10`);floatAt(P.x,P.y-26,`+${n} venom`,'#93d64e');
+  if(T.ev>=10)lose('You reached 10 stacks of Eternal Venom, which is lethal on Heroic.','Dodge every green mechanic and soak one Ravenous Feast per set to shed 3 stacks.');else if(T.ev>=8)alert(`${T.ev} Eternal Venom: soak the next Feast!`,'warn');}
+function tfCycle(){const T=G.T;clearTag('cyc');[[3,tfDeluge],[10,tfStone],[17,tfEmerge],[26,tfStir],[34,tfFeast],[42,tfDeluge],[49,tfStone],[56,tfFeast]].forEach(([t,f])=>after(t,f,'cyc'));T.cyc=G.t;}
+function tfDeluge(){const v=G.T.v;if(!v.alive)return;setCast(v,'Caustic Deluge',1.5);const mi=(G.T.ev<=6&&ROLE!=='tank'&&you('glob',.7))?rint(0,3):-1;
+  for(let i=0;i<4;i++){const a=i*TAU/4+rnd(-.4,.4),d=rnd(120,170);zone({kind:'soak',touch:true,x:clamp(v.x+Math.cos(a)*d,40,960),y:clamp(v.y+Math.sin(a)*d,40,660),r:20,t:8,need:1,mine:i===mi,label:'Globule',src:'Caustic Globule',color:'#93d64e',
+    onSoak:(ok,h)=>{if(h)tfStack(1,'Caustic Globule');if(!ok){tfStack(1,'Globule eruption');raidHit(10,'Globule eruption');}}});}
+  if(mi>=0)alert('Soak your Caustic Globule (costs you 1 stack)','you');}
+function tfStone(){const v=G.T.v;if(!v.alive)return;const tk=tankEnt(v)||P;setCast(v,'Stone Breaker',4.2);const mineT=tankEnt(v)===P;
+  [0,1,2].forEach(i=>{const a=rnd(0,TAU),d=rnd(60,110);const x=clamp(tk.x+Math.cos(a)*d,50,950),y=clamp(tk.y+Math.sin(a)*d,50,650);
+    zone({x,y,r:48,t:1.6+i*1.3,label:String(i+1),src:'Stone Breaker',noAvoid:mineT,color:mineT?'#5fe0ff':null,onFire:(h)=>{if(mineT){if(!h){raidHit(26,'Stone Breaker');const a2=ang({x,y},P);P.x+=Math.cos(a2)*120;P.y+=Math.sin(a2)*120;alert('Stone Breaker hit nobody: tank soaks 1, 2, 3','warn');}else hurt(12,'Stone Breaker');}else if(h){hurt(45,'Stone Breaker');tfStack(1,'Stone Breaker');}}});
+    if(!mineT&&v.botTank)after(i*1.3,()=>botGo(v.botTank,x,y,1.4),'cyc');});
+  if(mineT)alert('Stone Breaker: stand in 1, then 2, then 3','you');}
+function tfEmerge(){const T=G.T;raidHit(8,'Venomous Emergence');tfStack(1,'Venomous Emergence');
+  for(let i=0;i<3;i++)addMob({name:'Venom Serpent',x:440+i*60,y:380+rnd(-20,20),r:14,hp:4.5,speed:0,color:'#7fd04a',prio:2,st:2+i*1.5,tick:(a,dt)=>{a.st-=dt;if(a.st<=0){a.st=6;const tg=Math.random()<.45?P:(bots(1)[0]||P);
+      zone({type:'line',from:a,x:a.x,y:a.y,aim:()=>tg,len:640,w:38,t:1.8,lock:.5,src:'Corrosive Spit',dmg:20,onFire:(h)=>{if(h)tfStack(1,'Corrosive Spit');}});}}});
+  alert('Venomous Emergence: kill the serpents, dodge their spit','warn');}
+function tfStir(){const it=G.T.it;setCast(it,'Stir the Depths',6);alert('Stir the Depths: find the gap in each wave','warn');
+  for(let i=0;i<4;i++)after(i*1.6,()=>{const gx=rnd(150,850);for(const [x0,x1] of[[0,gx-80],[gx+80,W]])zone({type:'rect',x:x0,y:30,w:x1-x0,h:54,t:1,live:4.4,noAvoid:true,src:'Venom Wave',color:'#93d64e',
+    onLive:(z,dt)=>{z.y+=165*dt;},onLiveHit:()=>{hurt(15,'Venom Wave');tfStack(1,'Venom Wave');}});},'cyc');}
+function tfFeast(){const it=G.T.it;if(!it.alive)return;setCast(it,'Ravenous Feast',5);
+  zone({kind:'soak',x:it.x,y:clamp(it.y+it.r+70,0,640),r:75,t:5,need:3,label:'Feast',src:'Ravenous Feast',onSoak:(ok,h)=>{if(h){if(P.debuffs['Feasted']){lose('You soaked Ravenous Feast twice. The Feasted vulnerability is lethal on Heroic.','Only soak one Feast per set; wait for Feasted to fall off.');return;}
+      hurt(18,'Ravenous Feast');G.T.ev=Math.max(0,G.T.ev-3);showDeb('Eternal Venom',G.T.ev,'#93d64e');info('ev',`Eternal Venom: ${G.T.ev}/10`);debuffP('Feasted',{dur:30,color:'#c0392b'});alert('Feast soaked: 3 stacks removed','good');}
+    if(!ok)raidHit(25,'Ravenous Feast');}});
+  if(G.T.ev>=4&&!P.debuffs['Feasted'])alert('Ravenous Feast: soak it to shed 3 stacks','you');}
+function tfVile(){const T=G.T;if(T.sub||!T.it.alive)return;zone({x:P.x,y:P.y,r:58,t:2,dmg:18,src:'Vile Flood',onFire:(h)=>{if(h)tfStack(1,'Vile Flood');}});for(const b of bots(2))zone({x:b.x,y:b.y,r:58,t:2,src:'Vile Flood'});}
+function tfSubmerge(){const T=G.T;T.sub=true;clearTag('cyc');for(const b of[T.v,T.it]){b.immune=true;b.hidden=true;b.cast=null;}alert('Submerge: dodge the spinning beam','warn');
+  const a0=rnd(0,TAU);for(const off of[0,Math.PI])zone({type:'line',x:500,y:350,ang:a0+off,len:700,w:40,t:2.5,lock:9,live:12,repeat:true,noAvoid:true,src:'Sanguine Beam',color:'#d6455c',
+    onLive:(z,dt)=>{z.ang+=dt*.55;},onLiveHit:()=>{hurt(25,'Sanguine Beam');tfStack(2,'Sanguine Beam');}});
+  for(let i=0;i<6;i++)after(2.5+i*2,()=>puddle({x:clamp(P.x+rnd(-160,160),40,960),y:clamp(P.y+rnd(-160,160),40,660),r:44,t:18,dps:14,slow:true,color:'#8a1e33',name:'Sanguine Storm'}),'sub');
+  after(15,()=>{T.sub=false;T.flip=!T.flip;const sp=T.flip?[{x:300,y:420},{x:700,y:420}]:[{x:380,y:300},{x:620,y:300}];[T.v,T.it].forEach((b,i)=>{b.immune=false;b.hidden=false;b.x=sp[i].x;b.y=sp[i].y;b.tankSpot={...sp[i]};});G.raidSpot=T.flip?{x:500,y:250}:{x:500,y:500};tfCycle();alert('The Twin Fangs resurface','info');},'sub');}
+
+const MOUTHS=[{x:250,y:105},{x:500,y:80},{x:750,y:105}];
+function caZul(){const C=G.C;return C.z.alive&&!C.z.hidden?C.z:null;}
+function caFangs(){const z=caZul();if(!z)return;setCast(z,'Fangs of the Coiled Altar',8);for(let i=0;i<8;i++)after(i,()=>raidHit(3.5,'Fangs of the Coiled Altar'),'p1');
+  for(let i=0;i<3;i++){const m=pick(MOUTHS);puddle({x:clamp(m.x+rnd(-120,120),60,940),y:rnd(170,320),r:58,t:30,dps:16,color:'#5fa83a',name:'Noxious Ground'});}alert('Fangs of the Coiled Altar: heavy raid damage, avoid the green ground','info');}
+function caDeluge(){const C=G.C;for(let i=0;i<5;i++)C.orbs.push({x:rnd(90,910),y:rnd(200,650)});alert('Toxic Deluge: pop orbs with Guillotine, 1 or 2 at a time','info',3);
+  if(C.orbs.length>=11)lose('Coalesced Venom covered the arena.','Use each Guillotine to pop one or two orbs so they never pile up.');}
+function caGuillotine(){const z=caZul();if(!z)return;const mine=you('guill',.65);const tgt=mine?P:bots(1)[0];if(!tgt)return;setCast(z,'Guillotine',4.5);
+  zone({type:'circle',follow:tgt,x:tgt.x,y:tgt.y,r:72,t:4.5,lock:1,src:'Guillotine',dmg:55,spare:()=>mine,label:mine?'YOU':'',color:mine?'#5fe0ff':null,
+    onFire:(h,zz)=>{if(mine)hurt(20,'Guillotine');const C=G.C;const hit=C.orbs.filter(o=>Math.hypot(o.x-zz.x,o.y-zz.y)<zz.r);C.orbs=C.orbs.filter(o=>!hit.includes(o));
+      if(hit.length){raidHit(9*hit.length,'Venom Rupture');if(hit.length>=3){raidHit(30,'Chain Rupture');alert(`${hit.length} orbs at once is too many`,'warn');}else floatAt(zz.x,zz.y,`${hit.length} orb${hit.length>1?'s':''} cleared`,'#c9a6ff');}
+      if(D(zz,raidCenter())<zz.r+30){raidHit(18,'Guillotine');alert('The axe landed in the raid','warn');}}});
+  if(mine)alert('Guillotine on you: drag it onto 1 or 2 orbs, away from the raid','you',3);else{const o=G.C.orbs.slice().sort((a,b)=>D(a,tgt)-D(b,tgt))[0];if(o)botGo(tgt,o.x,o.y,4.5);else botGo(tgt,tgt.x<500?80:920,tgt.y,4.5);}}
+function caSever(){const z=caZul();if(!z)return;setCast(z,'Sever',2.2);zone({type:'cone',from:z,x:z.x,y:z.y,aim:()=>tankEnt(z)||P,arc:1.1,r:280,t:2.2,lock:.4,src:'Sever',dmg:60,spare:()=>tankEnt(z)===P,
+  onFire:(h,zz)=>{if(tankEnt(z)===P){hurt(15,'Sever');if(inZone(zz,raidCenter())){raidHit(25,'Sever');alert('Sever hit the raid: face Zul\'jan away','warn');}}}});}
+function caDread(){const C=G.C;const m=C.mal;if(!m||!m.alive)return;setCast(m,'Dreadmarch',2);
+  if(you('dread',.6)){const a=rnd(0,TAU);addMob({name:'Manifestation of Dread',x:clamp(P.x+Math.cos(a)*210,30,970),y:clamp(P.y+Math.sin(a)*210,30,670),r:16,hp:99,noBot:true,untargetable:true,speed:105,fix:P,color:'#5b3c8f',life:11,
+    onTouch:(ad)=>{ad.dead=true;caSever2(ad);},onExpire:(ad)=>caSever2(ad)});alert('A Manifestation fixates you: kite it away from the raid','you',3);}}
+function caSever2(a){fxRing(a.x,a.y,90,'#b48cff');if(D(a,P)<90)hurt(45,'Soul Sever');if(D(a,raidCenter())<200){raidHit(22,'Soul Sever');alert('Soul Sever exploded near the raid','warn');}}
+function caSpirits(){const m=G.C.mal;if(!m||!m.alive)return;const kickMine=ROLE!=='healer';
+  for(let i=0;i<2;i++){const mine=kickMine&&i===0;addMob({name:'Restless Spirit',x:rnd(220,780),y:rnd(190,300),r:13,hp:3.5,speed:0,color:'#9fd0ff',prio:2,kickMine:mine,st:1+i,
+    tick:(a,dt)=>{if(a.cast)return;a.st-=dt;if(a.st<=0){a.st=8;a.cast={name:'Wail of Terror',t:3.5,dur:3.5,int:true,kick:a.kickMine?'player':'bot',onDone:()=>{raidHit(10,'Wail of Terror');if(a.kickMine){P.feared=3;P.fearA=rnd(0,TAU);alert('Feared: interrupt Wail of Terror next time','warn');}}};if(a.kickMine)alert(`Interrupt Wail of Terror (${ROLE==='tank'?'Q':'E'})`,'you');}}});}}
+function caFrags(){const C=G.C;const dest=C.z.alive&&!C.z.hidden?C.z:C.body;if(!dest)return;const mi=rint(0,2);
+  for(let i=0;i<3;i++){const s=pick([{x:rnd(40,960),y:670},{x:30,y:rnd(250,650)},{x:970,y:rnd(250,650)}]);const mine=i===mi;const tt=D(s,dest)/42;
+    addMob({name:'Fragment of Malacrass',x:s.x,y:s.y,r:11,hp:99,noBot:true,untargetable:true,touchAny:true,speed:42,to:{x:dest.x,y:dest.y},arrive:40,color:'#e8cfff',mine,life:mine?null:tt*.6,
+      onArrive:()=>{for(const b of G.bosses)if(b.alive&&!b.untargetable)b.hp=Math.min(1,b.hp+.035);alert('A Fragment reached Zul\'jan and healed the bosses','warn');},
+      onTouch:(a)=>{a.dead=true;raidHit(7,'Spirit Erasure');floatAt(a.x,a.y,'Intercepted','#e8cfff');},onExpire:()=>raidHit(7,'Spirit Erasure')});}
+  alert('Fragments of Malacrass: intercept yours (cyan ring)','you');}
+
+const ULLANES=[130,270,410,590,730,870];
+function ulWave(){const U=G.U;setCast(U.u,'Venom Wave',2.8);for(const lx of shuffle(ULLANES.slice()).slice(0,2)){
+  zone({type:'rect',x:lx-50,y:120,w:100,h:580,t:2.8,src:'Venom Wave',label:'',onFire:()=>{zone({type:'rect',x:lx-50,y:110,w:100,h:90,t:.01,live:1.6,noAvoid:true,src:'Venom Wave',color:'#93d64e',
+    onLive:(z,dt)=>{z.y+=390*dt;for(const e of G.U.eggs){if(!e.dead&&e.x>z.x&&e.x<z.x+z.w&&e.y>z.y&&e.y<z.y+z.h)ulHatch(e);}},
+    onLiveHit:()=>{hurt(35,'Venom Wave');const d=P.debuffs['Venom'];debuffP('Venom',{dur:8,dot:3,color:'#93d64e',stacks:(d?d.stacks||1:0)+1});}});}});}
+  alert('Venom Waves: leave the marked lanes','warn');}
+function ulHatch(e){e.dead=true;raidDot(1.5,20,'Putrid Membrane');floatAt(e.x,e.y,'Hatched!','#93d64e');addMob({name:'Viper',x:e.x,y:e.y,r:12,hp:3,speed:55,to:G.raidSpot,arrive:40,color:'#5fa83a',prio:2,onArrive:()=>raidHit(8,'Viper Bite')});}
+function ulRoar(){const u=G.U.u;setCast(u,'Roar',2.2);const pts=[{x:P.x,y:P.y}];for(let i=0;i<7;i++)pts.push({x:rnd(80,920),y:rnd(220,660)});
+  pts.forEach((p,i)=>zone({x:p.x,y:p.y,r:52,t:2.2,dmg:40,src:'Falling Debris',onFire:()=>{if(i<3)addMob({name:'Brood Spawn',x:p.x,y:p.y,r:10,hp:2.2,speed:45,to:G.raidSpot,arrive:40,color:'#79b34a',prio:1,onArrive:()=>raidHit(5,'Brood Spawn')});}}));alert('Roar: falling debris','warn');}
+function ulSpit(){const u=G.U.u;setCast(u,'Venom Spit',2);zone({type:'cone',from:u,x:u.x,y:u.y,aim:()=>tankEnt(u)||P,arc:.7,r:330,t:2,lock:.4,src:'Venom Spit',dmg:55,spare:()=>tankEnt(u)===P,
+  onFire:(h,z)=>{if(tankEnt(u)===P){hurt(14,'Venom Spit');if(inZone(z,raidCenter())){raidHit(25,'Venom Spit');alert('Venom Spit hit the raid: aim it away','warn');}}}});}
+function ulHeart(){const U=G.U;U.heartOn=true;const h=addMob({name:'Venomous Heart',x:500,y:330,r:26,hp:9999,noBot:true,heart:true,speed:0,life:16,color:'#d6455c',prio:5,onExpire:()=>{U.heartOn=false;}});
+  if(!U.lusted){U.lusted=true;G.lust=40;}alert('Venomous Heart exposed: it shares health with Ula\'tek and takes double damage. Bloodlust!','good',3.5);ulRoar();if(ROLE==='dps')G.target=h;}
+
+function kPortals(){const K=G.K,k=K.k;if(K.dark||K.final)return;setCast(k,'Void Portals',6);for(let i=0;i<6;i++)after(i,()=>raidHit(2,'Void Portals'),'p');
+  after(2,()=>{if(G.over||K.final)return;
+    const hk=addMob({name:'Venomous Hulk',x:k.x-200,y:k.y+40,r:20,hp:9,speed:45,color:'#3f7a4f',prio:1,tauntable:true,to:null,st:1.5,
+      tick:(a,dt)=>{if(!a.fix){a.to=ROLE==='tank'?raidCenter():{x:200,y:430};}a.st-=dt;const rc=raidCenter();if(a.st<=0){a.st=1.5;if(!a.fix&&D(a,rc)<90)raidHit(4,'Hulk Smash');if(a.fix===P&&D(a,P)<a.r+P.r+30)hurt(5,'Hulk Smash');}}});hk.arrive=-1;
+    if(ROLE==='tank')alert('Taunt the Venomous Hulk (Space) and drag it 25+ yards from Kith\'ix','you',3);
+    addMob({name:'Voidweaver',x:k.x+210,y:k.y+40,r:13,hp:4,speed:0,color:'#8a6bff',prio:3,st:1,kickMine:ROLE!=='healer',
+      tick:(a,dt)=>{if(a.cast)return;a.st-=dt;if(a.st<=0){a.st=7;a.cast={name:'Void Bolt',t:3,dur:3,int:true,kick:a.kickMine?'player':'bot',onDone:()=>raidHit(14,'Void Bolt')};if(a.kickMine)alert(`Interrupt the Voidweaver (${ROLE==='tank'?'Q':'E'})`,'you');}}});
+    for(let i=0;i<2;i++){const tg=i===0&&you('beetle',.6)?P:(bots(1)[0]||P);const b=addMob({name:'Bomber Beetle',x:k.x+rnd(-120,120),y:k.y+50,r:10,hp:1.6,speed:tg===P?118:80,fix:tg,noBot:tg===P,life:9,color:'#e0a030',prio:4,
+      onTouch:(a)=>kBoom(a),onExpire:(a)=>kBoom(a),tick:(a)=>{if(a.fix!==P&&a.fix&&D(a,a.fix)<18)kBoom(a);}});
+      if(tg===P)alert('A Bomber Beetle is chasing you: drag it away from the raid','you');}},'p');}
+function kBoom(a){if(a.dead&&a.boomed)return;a.dead=true;a.boomed=true;fxRing(a.x,a.y,90,'#e0a030');if(D(a,P)<90)hurt(30,'Bomber Beetle');if(D(a,raidCenter())<190)raidHit(18,'Bomber Beetle');}
+function kShock(){const K=G.K,k=K.k;if(K.dark||K.final)return;setCast(k,'Shockwave',4,{onDone:()=>{raidHit(52,'Shockwave');fxRing(k.x,k.y,700,'#b48cff');}});alert('Shockwave in 4 seconds: top everyone off','warn');}
+function kTentacles(){const K=G.K,k=K.k;if(K.dark||K.final)return;const a0=rnd(0,TAU);for(let i=0;i<4;i++)zone({type:'line',x:k.x,y:k.y,ang:a0+i*TAU/4+rnd(-.3,.3),len:520,w:46,t:2,lock:9,dmg:35,src:'Shadow Tentacles'});}
+function kMass(){const K=G.K,k=K.k;if(K.dark||K.final)return;const tk=tankEnt(k)||P;setCast(k,'Mass of Darkness',3);
+  zone({type:'circle',follow:tk,x:tk.x,y:tk.y,r:150,t:3,lock:.5,src:'Mass of Darkness',dmg:45,spare:()=>tankEnt(k)===P,onFire:(h,z)=>{if(tankEnt(k)===P){hurt(16,'Mass of Darkness');if(D(z,raidCenter())<170){raidHit(24,'Mass of Darkness');alert('Mass of Darkness splashed the raid: tank further out','warn');}}}});}
+function kNull(){const K=G.K;if(K.dark||K.final)return;const mine=you('null',.55);const tg=mine?P:bots(1)[0];if(!tg)return;
+  zone({type:'circle',kind:'mark',follow:tg,x:tg.x,y:tg.y,r:75,t:5,lock:.3,noAvoid:true,src:'Null Gate',label:mine?'YOU':'',onFire:(h,z)=>{puddle({x:z.x,y:z.y,r:78,t:28,dps:22,color:'#5a3a8f',name:'Null Gate'});if(D(z,raidCenter())<160){raidHit(16,'Null Gate');alert('A Null Gate opened inside the raid','warn');}}});
+  if(mine)alert('Null Gate on you: leave the raid and drop it out of the way','you');else botGo(tg,tg.x<500?70:930,rnd(300,650),5.2);}
+function kDark(){const K=G.K,k=K.k;K.dark={r:430,t:16};k.immune=true;k.energy=0;setCast(k,'Suffocating Darkness',16);K.li.energy=0;alert('Suffocating Darkness: stay inside Liadrin\'s light','warn',3);
+  for(const b of G.bots)if(b.alive)botGo(b,K.li.x+rnd(-70,70),K.li.y+rnd(-60,40),16);}
+function kFinal(){const K=G.K,k=K.k;K.final=true;clearTag('p');k.cast=null;P.stunned=2;alert('Stygian Howl!','warn');
+  after(2,()=>{P.hp=P.max;for(const b of G.bots)if(b.alive)b.hp=100;G.dmgMult=1.5;alert('Last Light: kill Kith\'ix before the 8th Eclipse!','good',3);
+    every(5,()=>{K.eclipse++;setCast(k,`Eightfold Eclipse ${K.eclipse}/8`,5);raidHit(6+K.eclipse*2.5,'Eightfold Eclipse');if(K.eclipse>=8)lose('The eighth Eclipse snuffed out Liadrin\'s light.','Save Burst for the last 25% and keep attacking while you dodge the Void motes.');},.5,'fin');
+    for(let i=0;i<6;i++){const a=rnd(0,TAU);addMob({name:'Void Mote',x:rnd(100,900),y:rnd(100,600),r:12,hp:99,noBot:true,untargetable:true,touchAny:true,speed:0,color:'#7b4fd8',vx:Math.cos(a)*120,vy:Math.sin(a)*120,
+      tick:(m,dt)=>{m.x+=m.vx*dt;m.y+=m.vy*dt;if(m.x<15||m.x>985)m.vx*=-1;if(m.y<15||m.y>685)m.vy*=-1;},onTouch:(m)=>{m.dead=true;hurt(25,'Void Mote');}});}},'fin');}
+
+const BOSSES=[
+{id:'nekzali',name:"Nek'zali the Soulcoiler",num:1,len:140,enrage:300,swap:'Hollowing Strikes',
+ floor:{base:'#131a17',tile:'#1e2723',accent:'#7d5cc8'},
+ blurb:"The Soulcoil cult's bouncer. Restless Amani crawl out of the coffins toward the Soulcoil Well, and every one that arrives feeds her energy. At 100 energy she casts Uncoiled Rage and the raid wipes.",
+ tips:{all:['Kill Restless Amani before they reach the Well in the middle. Each one is +5 energy and a raid hit.','Never stand between Nek\'zali and the tank during Possession Barrage.','At 50% she hides in the Well: kill the Echo of Jawae and soak your Hungering Pyre.','Phase 2 resets energy to 0 and the raid takes constant damage. Kill her before 100.'],
+  tank:['Drag Nek\'zali onto the glowing coffins so her cleave helps kill the adds.','During Possession Barrage, aim her away from the raid and keep your distance. Damage scales with how close you are.','Taunt back (Space) when your co-tank reaches 4 Hollowing Strikes.'],
+  healer:['Each Soulcoil Rite adds Ritual Burn: raid damage taken goes up 12% per cast.','Healing Pulse (Space) only reaches allies near you, so stay with the raid.','Save Tranquil Ward (Q) for the second Rite or the Phase 2 burn.'],
+  dps:['Click Amani that are closest to the Well first, or let auto-target pick.','In the intermission, kill Jawae fast to bring Nek\'zali back.','Burst (Space) when Phase 2 starts and Bloodlust is up.']},
+ tipsFor:{'Possession Barrage':'Possession Barrage fires from the boss to the tank. Stand behind the boss, never between her and the tank.','Soulcoil Rite':'During Soulcoil Rite, red circles fall in two waves and one always targets you. Keep moving.',"Jawae's Blast":'Jawae finishes each channel with a line blast. Step sideways out of the red line.'},
+ decor(g){const gr=g.createRadialGradient(500,350,5,500,350,75);gr.addColorStop(0,'#2a0f45');gr.addColorStop(.7,'#4b2a7a');gr.addColorStop(1,'rgba(75,42,122,0)');g.fillStyle=gr;g.beginPath();g.arc(500,350,75,0,TAU);g.fill();
+  g.strokeStyle='#8f6fd0';g.lineWidth=3;g.beginPath();g.arc(500,350,58,0,TAU);g.stroke();
+  for(const grp of COFFINS)for(const c of grp){g.save();g.translate(c.x,c.y);g.rotate(Math.atan2(350-c.y,500-c.x));g.fillStyle='#3a2f24';g.fillRect(-20,-11,40,22);g.strokeStyle='#5c4a37';g.lineWidth=2;g.strokeRect(-20,-11,40,22);g.restore();}},
+ under(c,G){const N=G.N;if(N&&N.glow){const p=.5+.5*Math.sin(G.t*12);for(const gi of N.glow.groups)for(const co of COFFINS[gi]){c.fillStyle=rgba('#c9a6ff',.25+.35*p);c.beginPath();c.arc(co.x,co.y,26,0,TAU);c.fill();}}},
+ setup(G){const b=mkBoss({name:"Nek'zali the Soulcoiler",short:"Nek'zali",x:500,y:210,r:34,color:'#7a5cc8',playerTanks:true,energyName:'Energy',cleave:true});G.N={b,glow:null};G.lust=40;
+  every(21,nekRestless,5,'p');every(23,nekBarrage,12,'p');every(42,nekRite,30,'p1');},
+ update(G,dt){const b=G.N.b;if(!b.alive)return;if(G.phase===1&&b.hp<=.5){G.phase=2;nekIntermission();}if(G.phase===3)b.energy+=dt*1.5;
+  if(b.energy>=100)lose("Nek'zali reached 100 energy and cast Uncoiled Rage.",'Kill the Restless Amani before they reach the Well, and burst in Phase 2 so she dies before the bar fills.');}},
+
+{id:'sentinels',name:'Entombed Sentinels',num:2,len:75,enrage:330,noSwap:true,
+ floor:{base:'#16190f',tile:'#22261a',accent:'#93d64e'},
+ blurb:"Two venom golems, Breath and Blood of Ula'tek. Within 40 yards of each other they take 99% less damage, so the raid splits: one half per golem. At 100 energy they merge for Vitriolic Stasis, a counting puzzle.",
+ tips:{all:['Stay on your side (green or red). Sides swap after each Stasis.','Green side: pop Toxic Droplets before they erupt, then step out of the venom line that shoots back to Breath.','Red side: when Blood is on you, walk to the room edge so its pool lands out of the way.','Vitriolic Stasis: you carry 1 to 3 marks. Walk into allies until your total is exactly 4. Above 4 kills you.'],
+  tank:['You tank the Sentinel on your side. Keep it more than 40 yards from the other one.','After Stasis you swap to the other golem.'],
+  healer:['Blood of Ula\'tek is dispellable (E), but the pool drops where the target stands.','Raid damage climbs as marks stack. Ward (Q) just before Stasis.'],
+  dps:['Kill Venom Coagulation the moment it spawns. It pulses raid damage.','Keep both golems at even health. The lower one heals at Stasis.']},
+ tipsFor:{'Living Venom':'Popping a droplet on Heroic fires a venom line back toward Breath. Step sideways after you pop it.','Vitriolic Stasis':'In Stasis, merge into allies until your total is exactly 4. Your number is shown above you.'},
+ under(c,G){const S=G.S;if(!S)return;if(S.A.alive&&S.B.alive&&D(S.A,S.B)<400){c.strokeStyle=rgba('#b48cff',.6+.3*Math.sin(G.t*10));c.lineWidth=4;c.setLineDash([10,8]);c.beginPath();c.moveTo(S.A.x,S.A.y);c.lineTo(S.B.x,S.B.y);c.stroke();c.setLineDash([]);}
+  c.fillStyle='rgba(147,214,78,.05)';c.fillRect(0,0,500,H);c.fillStyle='rgba(214,69,92,.05)';c.fillRect(500,0,500,H);},
+ setup(G){G.raidSpot={x:500,y:500};const A=mkBoss({name:"Breath of Ula'tek",short:'Breath',x:250,y:330,r:36,color:'#86d24c',energyName:'Energy'});const B=mkBoss({name:"Blood of Ula'tek",short:'Blood',x:750,y:330,r:36,color:'#cf3c55',energyName:'Energy'});
+  A.energy=B.energy=50;G.S={A,B,mark:1,stasis:false};G.side=Math.random()<.5?'green':'red';A.playerTanks=G.side==='green';B.playerTanks=G.side==='red';
+  G.splitSpots={green:{x:250,y:500},red:{x:750,y:500}};G.spotFor=b=>G.splitSpots[b.side];G.startPos=()=>G.splitSpots[G.side];sentInfo();G.lust=40;sentTimers();},
+ update(G,dt){const S=G.S;const close=S.A.alive&&S.B.alive&&D(S.A,S.B)<400&&!S.stasis;S.A.dr=S.B.dr=close?.99:0;if(close)alert('Sentinels within 40 yards: 99% damage reduction','warn');
+  G.raidSpot=G.splitSpots[G.side];
+  if(!S.stasis){const e=(S.A.alive?S.A:S.B).energy+dt*100/45;S.A.energy=S.B.energy=e;if(e>=100)sentStasis();}
+  else if(!S.solved){for(const bt of G.bots){if(bt.num&&D(bt,P)<P.r+bt.r+6){const sum=S.pmark+bt.num;bt.num=0;if(sum>4){lose('Your Vitriolic marks went above 4, which is lethal on Heroic.','Count before you merge: your number plus theirs must land exactly on 4.');return;}
+    if(sum===4){S.solved=true;S.pmark=4;alert('Stasis cleared: exactly 4!','good');}else{S.pmark=sum;alert(`Now carrying ${sum}: find a ${4-sum}`,'you');}}}}}},
+
+{id:'explorers',name:'The Lost Explorers',num:3,len:50,enrage:300,noSwap:true,
+ floor:{base:'#17150f',tile:'#252117',accent:'#58a6d8'},
+ blurb:"Three possessed tortollans: Trader Gebbo, Scrollsage Iku and First Mate Nama. If all three stand within 30 yards they share United Defense. Mor'zahi pulls the strings and casts Final Ascension unless someone feeds his puppet a Disgusting Fish.",
+ tips:{all:['Never let all three explorers stand together. Two stacked, one apart.','Final Ascension: grab the fish and feed it to the glowing explorer.','Blink Nova on you: run away from the raid before Iku teleports to you.','Frostfire Volley: clear a fire debuff in a frost patch, and frost in fire.','Mighty Thud: split into your assigned soak.'],
+  tank:['You tank First Mate Nama. Keep him away from Gebbo and Iku so United Defense stays off.'],
+  healer:['Every fish fed hits the raid with Spirit Backlash. Ward (Q) if two land close together.','Constant shadow damage all fight; keep pulsing.'],
+  dps:['Break your Gebbo crate within 25 seconds.','Keep all three at even health. Each early death makes the rest vengeful.']},
+ tipsFor:{'Elemental Explosion':'Burning Flames is cleared in a blue frost patch; Piercing Frost is cleared in an orange fire patch.','Mighty Thud':'Only stand in your own Thud soak (cyan). Doubling up in the other one hurts you.'},
+ decor(g){g.fillStyle='#3b3020';for(let i=0;i<10;i++){g.fillRect(rnd(40,940),rnd(40,640),rnd(20,40),rnd(14,24));}},
+ over(c,G){const E=G.E;if(!E)return;const m=E.m;c.save();c.globalAlpha=.55+.15*Math.sin(G.t*3);c.strokeStyle='#b48cff';c.lineWidth=2;
+  for(const b of[E.g,E.k,E.n])if(b.alive){c.beginPath();c.moveTo(m.x,m.y);c.quadraticCurveTo((m.x+b.x)/2,m.y+60,b.x,b.y);c.stroke();}c.restore();
+  if(P.carry==='fish'&&E.poss){c.strokeStyle='#ffd34d';c.setLineDash([6,6]);c.beginPath();c.moveTo(P.x,P.y);c.lineTo(E.poss.x,E.poss.y);c.stroke();c.setLineDash([]);}},
+ setup(G){G.raidSpot={x:500,y:500};const g=mkBoss({name:'Trader Gebbo',short:'Gebbo',x:300,y:290,r:30,color:'#c79a4a'});const k=mkBoss({name:'Scrollsage Iku',short:'Iku',x:365,y:310,r:30,color:'#58a6d8'});
+  const n=mkBoss({name:'First Mate Nama',short:'Nama',x:700,y:330,r:32,color:'#5aa37a',playerTanks:true});const m=mkBoss({name:"Mor'zahi",x:500,y:85,r:24,color:'#6b6f8a',untargetable:true,required:false,stationary:true,ghost:true,hpHidden:true});
+  G.E={g,k,n,m,av:0};G.lust=40;every(20,expBlink,6,'p');every(26,expVolley,11,'p');every(30,expCrates,16,'p');every(24,expThud,20,'p');every(36,expFish,25,'p');every(2,()=>raidHit(1.2,"Mor'zahi's Whispers"),2,'p');},
+ update(G,dt){const E=G.E;const al=[E.g,E.k,E.n].filter(b=>b.alive);let ud=false;if(al.length===3){ud=D(E.g,E.k)<300&&D(E.k,E.n)<300&&D(E.g,E.n)<300;}for(const b of al)b.dr=ud?.99:0;if(ud)alert('United Defense: all three explorers are together','warn');
+  if(P.carry==='fish'&&E.poss&&D(P,E.poss)<E.poss.r+P.r+12){P.carry=null;expFed(E.poss);alert("Mor'zahi's grip is broken",'good');}
+  if(E.poss&&!E.poss.alive)expFed(E.poss);},
+ onBossDeath(G,b){const E=G.E;if(![E.g,E.k,E.n].includes(b))return;const left=[E.g,E.k,E.n].filter(x=>x.alive).length;if(left>0){E.av++;alert(`${b.short} fell: the others grow vengeful`,'warn');if(!E.avOn){E.avOn=true;every(7,()=>raidHit(10+E.av*8,'Vengeance'),3,'p');}}}},
+
+{id:'vashnik',name:'Vashnik the Malignant',num:4,len:150,enrage:300,swap:'Corrosive Maw',
+ floor:{base:'#16130f',tile:'#231e18',accent:'#ff7a2e'},
+ blurb:"Vashnik drinks from the two fountains nearest to him at 100 energy. Each drained fountain spits out Living Venom that crawls to the Malignant Cavity in the middle. One arrival is a raid DoT; several is a wipe.",
+ tips:{all:['Kill Living Venom before it reaches the Cavity.','Exploding Infection on you: walk away from the raid before it ends.','Malignant Catalyst throws four bile sprays. Catch yours (cyan) so none lands on nobody.','Burning Venom from the fire fountain pulses raid damage until it dies.'],
+  tank:['Imbibe drains the two fountains closest to Vashnik. The dashed lines show which.','Never drain the same pair twice in a row: Toxic Vapor doubles.','Rotate him around the room between casts.'],
+  healer:['Siphoning Infection on allies must be dispelled (E), but every dispel hits the raid. Stagger them and never dispel at low raid health.','If nobody dispels an infection before it ends, that ally dies.'],
+  dps:['Priority: Living Venom closest to the Cavity, then Burning Venom.']},
+ tipsFor:{'Exploding Infection':'Exploding Infection hurts the raid based on your distance. Get 30 yards away before it ends.'},
+ decor(g){g.fillStyle='#0a0705';g.beginPath();g.arc(500,350,52,0,TAU);g.fill();const gr=g.createRadialGradient(500,350,0,500,350,52);gr.addColorStop(0,'rgba(147,214,78,.4)');gr.addColorStop(1,'rgba(147,214,78,0)');g.fillStyle=gr;g.beginPath();g.arc(500,350,52,0,TAU);g.fill();
+  for(const k in VF){const f=VF[k];g.fillStyle='#2b241c';g.beginPath();g.arc(f.x,f.y,46,0,TAU);g.fill();const r=g.createRadialGradient(f.x,f.y,0,f.x,f.y,40);r.addColorStop(0,f.c);r.addColorStop(1,rgba(f.c,.15));g.fillStyle=r;g.beginPath();g.arc(f.x,f.y,36,0,TAU);g.fill();g.strokeStyle='#5a4a38';g.lineWidth=4;g.beginPath();g.arc(f.x,f.y,46,0,TAU);g.stroke();}},
+ under(c,G){const V=G.V;if(!V||!V.b.alive)return;const pr=vNear(V.b);c.setLineDash([8,8]);c.lineWidth=2;for(const f of pr){c.strokeStyle=rgba(VF[f].c,.7);c.beginPath();c.moveTo(V.b.x,V.b.y);c.lineTo(VF[f].x,VF[f].y);c.stroke();}c.setLineDash([]);},
+ setup(G){G.raidSpot={x:500,y:470};const b=mkBoss({name:'Vashnik the Malignant',short:'Vashnik',x:500,y:250,r:36,color:'#b5643a',playerTanks:true,energyName:'Energy'});b.tankSpot=vPairSpot(VPAIRS[0]);G.V={b,last:'',seq:0};G.lust=40;
+  every(24,vashInfection,9,'p');every(30,vashCatalyst,16,'p');},
+ update(G,dt){const V=G.V,b=V.b;if(!b.alive)return;if(!b.cast||b.cast.name!=='Imbibe'){b.energy+=dt*100/28;if(b.energy>=100)vashImbibe();}
+  const dx=500-b.x,dy=350-b.y,l=Math.hypot(dx,dy)||1;G.raidSpot={x:clamp(b.x+dx/l*130,80,920),y:clamp(b.y+dy/l*130,80,620)};
+  info('pair',`Next Imbibe: ${vNear(b).map(f=>VF[f].n).join(' + ')}${vNear(b).slice().sort().join('+')===V.last?' (REPEAT!)':''}`);}},
+
+{id:'sszorak',name:'Sszorak',num:5,len:150,enrage:300,swap:'Corroded Armor',arena:'circle',R:320,
+ floor:{base:'#101a16',tile:'#1a2822',accent:'#5fe0c0'},
+ blurb:"A venom-warped predator on the Altar of the Six Winds. His Apex Predator combo mixes two group soaks with tank hits, and Raging Crosswinds will blow you off the platform unless you shelter by a Viscous Cyst.",
+ tips:{all:['Mutilate is a group soak: group A takes the first, group B the second. Never take both.','Venomous Surge on you: drop the cyst on the marker, opposite the next wind tunnel.','Raging Crosswinds: stand next to a cyst (dashed ring) or get blown off.','Howling Maelstrom at 100 energy: Sszorak takes 30% more damage. Hold by a cyst.'],
+  tank:['Ravage is a solo soak centred on you. Stay put inside it.','Tail Lash sweeps a side. Keep the raid behind the boss.'],
+  healer:["Ula'tek's Presence ticks all fight. Mutilate and Crosswinds stack up raid damage."],
+  dps:['Save Burst (Space) for the Maelstrom damage window.']},
+ tipsFor:{'Mutilate while Mutilated':'Mutilate leaves a 500% vulnerability. Soak only your own group\'s Mutilate.','Mutilate (under-soaked)':'When your group is called, stand in the gold cone.'},
+ decor(g){for(const a of TUN){const x=500+Math.cos(a)*320,y=350+Math.sin(a)*320;g.fillStyle='#04100b';g.beginPath();g.arc(x,y,34,0,TAU);g.fill();g.strokeStyle='#3c6a55';g.lineWidth=4;g.beginPath();g.arc(x,y,34,0,TAU);g.stroke();}
+  g.strokeStyle='rgba(95,224,192,.12)';g.lineWidth=2;for(let r=80;r<320;r+=60){g.beginPath();g.arc(500,350,r,0,TAU);g.stroke();}},
+ under(c,G){const Z=G.Z;if(!Z)return;for(const cy of Z.cysts){c.fillStyle='rgba(147,214,78,.08)';c.beginPath();c.arc(cy.x,cy.y,70,0,TAU);c.fill();c.strokeStyle='rgba(147,214,78,.55)';c.setLineDash([5,6]);c.beginPath();c.arc(cy.x,cy.y,70,0,TAU);c.stroke();c.setLineDash([]);
+   const gr=c.createRadialGradient(cy.x-5,cy.y-6,2,cy.x,cy.y,20);gr.addColorStop(0,'#d9ff9e');gr.addColorStop(1,'#4f9a2a');c.fillStyle=gr;c.beginPath();c.arc(cy.x,cy.y,18,0,TAU);c.fill();}
+  if(Z.marker&&Z.marker.t>0){c.strokeStyle='#5fe0ff';c.lineWidth=3;c.beginPath();c.arc(Z.marker.x,Z.marker.y,26,0,TAU);c.stroke();c.fillStyle='#5fe0ff';c.font='600 13px '+getComputedStyle(document.body).fontFamily;c.textAlign='center';c.fillText('cyst here',Z.marker.x,Z.marker.y-32);}
+  if(Z.windTele){const a=Z.windTele.a;const x=500+Math.cos(a)*320,y=350+Math.sin(a)*320;c.fillStyle=rgba('#ffffff',.35+.3*Math.sin(G.t*14));c.beginPath();c.arc(x,y,40,0,TAU);c.fill();drawArrow(c,x,y,a+Math.PI,180,'#ffffff');}},
+ setup(G){G.R=320;G.raidSpot={x:500,y:420};const b=mkBoss({name:'Sszorak',x:500,y:560,r:36,color:'#3f8f6a',playerTanks:true,energyName:'Energy',tankSpot:{x:500,y:560}});G.Z={b,cysts:[],next:TUN[0]};G.anchors=G.Z.cysts;
+  G.grp=Math.random()<.5?'A':'B';G.groupSpots={A:{x:420,y:430},B:{x:580,y:430}};G.spotFor=bt=>G.groupSpots[bt.grp];info('grp',`Mutilate group: ${G.grp}`);G.startPos=()=>G.groupSpots[G.grp];
+  G.lust=40;every(30,szApex,5,'p');every(2,()=>raidHit(1.2,"Ula'tek's Presence"),2,'p');},
+ update(G,dt){const Z=G.Z,b=Z.b;Z.cysts.forEach(c=>c.t-=dt);for(let i=Z.cysts.length-1;i>=0;i--)if(Z.cysts[i].t<=0)Z.cysts.splice(i,1);if(Z.marker)Z.marker.t-=dt;if(Z.windTele)Z.windTele.t-=dt;
+  if(Z.mael){Z.mAng+=dt*.35;G.wind={x:Math.cos(Z.mAng)*175,y:Math.sin(Z.mAng)*175};G.maelTick=(G.maelTick||0)+dt;if(G.maelTick>2){G.maelTick=0;raidHit(3,'Howling Maelstrom');}}
+  else{b.energy+=dt*100/95;if(b.energy>=100)szMaelstrom();}}},
+
+{id:'twinfangs',name:'The Twin Fangs',num:6,len:80,enrage:330,noSwap:true,
+ floor:{base:'#0f1714',tile:'#18241f',accent:'#93d64e'},
+ blurb:"Vexhul and Ithraz rise from the venom sea. Almost everything green gives you a stack of Eternal Venom, and on Heroic 10 stacks kills you. Ravenous Feast removes stacks, but only once per set.",
+ tips:{all:['Watch your Eternal Venom counter (top right). 10 is death.','Soak your Caustic Globule only if you have stacks to spare. An unsoaked one gives everyone a stack.','Stir the Depths: walk through the gap in each wave.','Ravenous Feast removes 3 stacks, but soaking a second Feast while Feasted kills you.','Submerge: keep moving around the spinning beam.'],
+  tank:['You tank Vexhul. Stone Breaker drops three numbered circles near you: stand in 1, then 2, then 3.'],
+  healer:['Venom stacks on the raid mean steady damage that never stops. Pulse continuously and Ward the Emergences.'],
+  dps:['Kill the three serpents from Venomous Emergence fast. Every spit is another stack.']},
+ tipsFor:{'Stone Breaker':'Stone Breaker circles belong to the tank. Stay out of them.','Sanguine Beam':'During Submerge, keep circling ahead of the beam.'},
+ decor(g){g.fillStyle='rgba(60,140,40,.35)';g.fillRect(0,0,W,24);g.fillRect(0,H-24,W,24);g.fillRect(0,0,24,H);g.fillRect(W-24,0,24,H);},
+ setup(G){G.raidSpot={x:500,y:500};const v=mkBoss({name:'Vexhul',x:380,y:300,r:34,color:'#6cc24a',playerTanks:true,energyName:'Energy'});const it=mkBoss({name:'Ithraz',x:620,y:300,r:34,color:'#c0392b',energyName:'Energy'});
+  G.T={v,it,ev:0};info('ev','Eternal Venom: 0/10');G.lust=40;tfCycle();every(2,()=>raidHit(1.3,'Venom Sea'),2,'p');every(9,tfVile,7,'p');},
+ update(G,dt){const T=G.T;if(T.ev>0)hurt(.22*T.ev*dt,'Eternal Venom',true);if(!T.sub){const e=(G.t-T.cyc)/64*100;T.v.energy=T.it.energy=e;if(e>=100)tfSubmerge();}}},
+
+{id:'altar',name:'The Coiled Altar',num:7,len:70,enrage:360,noSwap:true,
+ floor:{base:'#12161a',tile:'#1c2228',accent:'#2f8f8f'},
+ blurb:"Zul'jan, mutated by Ula'tek's poison, guards the Coiled Altar. When he falls, Hex Lord Malacrass joins with Dreadmarch and Eternal Nightfall, then binds Zul'jan back to life for a final showdown.",
+ tips:{all:['Phase 1: Coalesced Venom orbs pile up. Guillotine pops every orb in its circle, so drag it onto one or two at a time.','Stay out of Sever (frontal) and the green Noxious Ground.','Phase 2: a Manifestation of Dread may fixate you. Kite it away from the raid until it explodes.','Intercept Fragments of Malacrass before they heal the bosses.','Eternal Nightfall: break the Veil of Twilight shield in 10 seconds.'],
+  tank:['Face Zul\'jan away from the raid for Sever.','Interrupt Wail of Terror with Q.'],
+  healer:['Fangs of the Coiled Altar is an 8-second raid channel. Ward (Q) for it.','Each intercepted Fragment hits the raid with Spirit Erasure.'],
+  dps:['Interrupt Wail of Terror (E) on your assigned spirit.','Hold Burst (Space) for Eternal Nightfall.']},
+ tipsFor:{'Guillotine':'A Guillotine circle follows its target. If it is not yours, stay out of it.','Soul Sever':'Kite the Manifestation so it explodes away from you and the raid.','Sever':'Sever is a frontal at the tank. Stand behind Zul\'jan.'},
+ decor(g){g.fillStyle='#0b0f12';g.fillRect(0,0,W,130);g.fillStyle='#24303a';g.fillRect(0,118,W,12);
+  for(const m of MOUTHS){g.fillStyle='#1d3a3a';g.beginPath();g.ellipse(m.x,m.y,70,38,0,0,TAU);g.fill();g.fillStyle='#071010';g.beginPath();g.ellipse(m.x,m.y+6,40,18,0,0,TAU);g.fill();g.fillStyle='#e8f0d0';for(const s of[-1,1]){g.beginPath();g.moveTo(m.x+s*24,m.y-4);g.lineTo(m.x+s*18,m.y+16);g.lineTo(m.x+s*12,m.y-2);g.fill();}}},
+ under(c,G){const C=G.C;if(!C)return;for(const o of C.orbs){const gr=c.createRadialGradient(o.x,o.y,2,o.x,o.y,18);gr.addColorStop(0,'#f0d8ff');gr.addColorStop(1,'rgba(150,80,220,.2)');c.fillStyle=gr;c.beginPath();c.arc(o.x,o.y,16+2*Math.sin(G.t*4+o.x),0,TAU);c.fill();}
+  if(C.body&&!(C.z.alive&&!C.z.hidden)){c.globalAlpha=.4;c.fillStyle='#2f8f8f';c.beginPath();c.ellipse(C.body.x,C.body.y,40,22,0,0,TAU);c.fill();c.globalAlpha=1;}},
+ setup(G){G.raidSpot={x:500,y:500};const z=mkBoss({name:"Zul'jan",x:500,y:300,r:36,color:'#2f8f8f',playerTanks:true});G.C={z,orbs:[],mal:null,body:null};G.lust=40;
+  every(32,caFangs,8,'p1');every(36,caDeluge,4,'p1');every(18,caGuillotine,12,'p13');every(15,caSever,6,'p13');info('orbs','Orbs: 0/10');},
+ update(G,dt){const C=G.C;info('orbs',`Orbs: ${C.orbs.length}/10`);const m=C.mal;
+  if(m&&m.alive&&(G.phase===2||G.phase===3)){if(!m.cast||m.cast.name!=='Eternal Nightfall'){m.energy+=dt*100/60;if(m.energy>=100){m.energy=0;m.shield=.11;setCast(m,'Eternal Nightfall',10,{onDone:()=>{if(m.shield>0)lose('Eternal Nightfall: the Veil of Twilight was not broken.','Save Burst (Space) for Eternal Nightfall and break the shield in 10 seconds.');else alert('Veil broken','good');}});alert('Eternal Nightfall: break the Veil of Twilight!','warn',3);}}
+   m.botMult=m.shield>0&&ROLE!=='dps'?1.9:1;if(m.shield<=0&&m.cast&&m.cast.name==='Eternal Nightfall'){m.cast=null;alert('Veil of Twilight broken','good');}}
+  if(G.phase===2&&m&&m.hp<=.3){G.phase=3;C.z.alive=true;C.z.hidden=false;C.z.hp=.35;C.z.required=true;C.z.x=500;C.z.y=160;C.z.tankSpot={x:400,y:300};m.tankSpot={x:620,y:300};C.z.playerTanks=true;m.playerTanks=false;
+   assignTanks();buildBossFrames();every(18,caGuillotine,6,'p13');every(15,caSever,9,'p13');alert("Soulbinding: Zul'jan rises as Malacrass's puppet!",'warn',3);}},
+ onBossDeath(G,b){const C=G.C;if(b===C.z&&G.phase===1){G.phase=2;clearTag('p1');clearTag('p13');C.body={x:500,y:160};C.z.required=false;
+   const m=mkBoss({name:'Hex Lord Malacrass',short:'Malacrass',x:500,y:190,r:32,color:'#8a5cc8',energyName:'Energy',playerTanks:true,tankSpot:{x:500,y:300}});m.hp=1;C.mal=m;assignTanks();buildBossFrames();
+   every(24,caDread,5,'p2');every(28,caSpirits,12,'p2');every(20,caFrags,8,'p2');alert('Hex Lord Malacrass joins the fight','warn',3);}}},
+
+{id:'ulatek',name:"Ula'tek",num:8,len:165,enrage:330,swap:'Corrosive Bite',
+ floor:{base:'#101612',tile:'#18221b',accent:'#93d64e'},
+ blurb:"The brood mother herself. Her arena is a nursery: Venom Waves roll down the lanes and hatch any egg they touch, and each Viper that hatches sprays the raid with Putrid Membrane. Twice, her Venomous Heart is exposed for a damage window.",
+ tips:{all:['Venom Waves: leave the marked lanes. A wave through an egg hatches a Viper.',"Roar drops debris circles. One always lands on you.","Ula'tek's Presence ramps raid damage over time. The fight is a race.",'At 70% and 35% the Venomous Heart appears. Damage to it counts double.'],
+  tank:['Venom Spit is a frontal at you: aim it away from the raid.','Taunt back (Space) when your co-tank reaches 4 Corrosive Bite.'],
+  healer:['Every hatched Viper adds a raid DoT. Ward (Q) when several hatch at once.'],
+  dps:['Switch to the Venomous Heart the moment it appears and Burst.','Kill Vipers and Brood Spawn before they reach the raid.']},
+ tipsFor:{'Venom Wave':'Venom Wave lanes light up red before the wave rolls down. Step out sideways.'},
+ decor(g){const gr=g.createRadialGradient(500,140,10,500,140,220);gr.addColorStop(0,'rgba(147,214,78,.35)');gr.addColorStop(1,'rgba(147,214,78,0)');g.fillStyle=gr;g.fillRect(250,0,500,360);
+  g.strokeStyle='rgba(147,214,78,.12)';g.lineWidth=1;for(const x of ULLANES){g.beginPath();g.moveTo(x-50,120);g.lineTo(x-50,700);g.moveTo(x+50,120);g.lineTo(x+50,700);g.stroke();}},
+ under(c,G){const U=G.U;if(!U)return;for(const e of U.eggs){if(e.dead)continue;c.fillStyle='#d9d0a8';c.beginPath();c.ellipse(e.x,e.y,9,12,e.rot,0,TAU);c.fill();c.fillStyle='#7f9a5a';c.beginPath();c.arc(e.x-2,e.y-3,2,0,TAU);c.arc(e.x+3,e.y+3,1.6,0,TAU);c.fill();}},
+ setup(G){G.raidSpot={x:500,y:500};const u=mkBoss({name:"Ula'tek",x:500,y:160,r:58,color:'#4fae5a',playerTanks:true,speed:40});G.U={u,eggs:[],presence:1,hearts:[.7,.35]};
+  for(let i=0;i<16;i++){let e;do{e={x:rnd(70,930),y:rnd(240,660),rot:rnd(-.5,.5)};}while(Math.hypot(e.x-500,e.y-500)<110);G.U.eggs.push(e);}
+  every(16,ulWave,6,'p');every(22,ulRoar,12,'p');every(14,ulSpit,8,'p');every(2,()=>raidHit(G.U.presence,"Ula'tek's Presence"),2,'p');every(30,()=>{G.U.presence+=.4;},30,'p');},
+ update(G,dt){const U=G.U;if(U.hearts.length&&U.u.hp<=U.hearts[0]){U.hearts.shift();ulHeart();}U.u.botMult=U.heartOn?1.6:1;}},
+
+{id:'kithix',name:"Kith'ix",num:9,len:150,enrage:330,swap:'Void Rend',raid2:true,
+ floor:{base:'#110f18',tile:'#1b1824',accent:'#7b4fd8'},
+ blurb:"A C'Thraxxi general freed when Ula'tek fell. Lady Liadrin fights beside you. Kith'ix calls the Voidswarm through portals, smothers the room in Suffocating Darkness at 100 energy, and at 25% begins Eightfold Eclipse.",
+ tips:{all:['Aqir near Kith\'ix take 75% less damage. Pull them away before killing them.','Bomber Beetle chasing you: drag it away from the raid, or kill it.','Null Gate on you: leave the raid before it opens.','Suffocating Darkness: stay inside Liadrin\'s shrinking light.','At 25%: Eightfold Eclipse. Kill him before the 8th cast.'],
+  tank:['Mass of Darkness hits everyone within 15 yards of you. Keep away from the raid.','Taunt the Venomous Hulk (Space) and drag it 25+ yards from Kith\'ix.'],
+  healer:['Shockwave is near-lethal. Top everyone off before it lands (4-second cast).','Ward (Q) for the Eclipse phase.'],
+  dps:['Interrupt the Voidweaver\'s Void Bolt (E).','Burst during Divine Radiance (Kith\'ix stunned) and in the last 25%.']},
+ tipsFor:{'Mass of Darkness':'Mass of Darkness splashes 15 yards around the tank. Stay away from the tank.','Shockwave':'Shockwave hits everyone for most of their health. Be near full when it lands.'},
+ under(c,G){const K=G.K;if(!K)return;const l=K.li;c.save();c.translate(l.x,l.y);const gr=c.createRadialGradient(0,0,4,0,0,50);gr.addColorStop(0,'rgba(255,230,150,.5)');gr.addColorStop(1,'rgba(255,230,150,0)');c.fillStyle=gr;c.beginPath();c.arc(0,0,50,0,TAU);c.fill();c.restore();
+  drawPine(c,l.x,l.y,13,'#f2b631',false,false);c.fillStyle='#f6d98a';c.font='600 13px '+getComputedStyle(document.body).fontFamily;c.textAlign='center';c.fillText('Lady Liadrin',l.x,l.y+34);},
+ over(c,G){const K=G.K;if(!K||!K.dark)return;c.save();c.beginPath();c.rect(0,0,W,H);c.arc(K.li.x,K.li.y,K.dark.r,0,TAU,true);c.fillStyle='rgba(8,2,20,.72)';c.fill('evenodd');c.strokeStyle='#f2b631';c.lineWidth=3;c.beginPath();c.arc(K.li.x,K.li.y,K.dark.r,0,TAU);c.stroke();
+  c.fillStyle='#f2b631';c.fillRect(K.li.x-40,K.li.y+42,80*K.li.energy/100,6);c.strokeStyle='#000';c.strokeRect(K.li.x-40,K.li.y+42,80,6);c.restore();},
+ addDr(a){const k=G.K.k;return k.alive&&D(a,k)<250&&!a.untargetable?.75:0;},
+ setup(G){G.raidSpot={x:500,y:470};const k=mkBoss({name:"Kith'ix",x:500,y:250,r:44,color:'#5a3a8f',playerTanks:true,energyName:'Energy'});G.K={k,li:{x:500,y:580,energy:0},dark:null,final:false,eclipse:0};G.lust=40;
+  every(34,kPortals,6,'p');every(38,kShock,20,'p');every(14,kTentacles,9,'p');every(16,kMass,11,'p');every(21,kNull,15,'p');},
+ update(G,dt){const K=G.K,k=K.k;if(K.dark){const d=K.dark;d.t-=dt;d.r=430-280*(1-d.t/16);K.li.energy=100*(1-d.t/16);if(D(P,K.li)>d.r){hurt(14*dt,'Suffocating Darkness',true);alert('Get into Liadrin\'s light!','warn');}
+   G.darkTick=(G.darkTick||0)+dt;if(G.darkTick>2){G.darkTick=0;raidHit(2,'Suffocating Darkness');}
+   if(d.t<=0){K.dark=null;k.immune=false;k.stun=8;k.cast=null;fxRing(K.li.x,K.li.y,600,'#f2b631');alert("Divine Radiance: Kith'ix is stunned. Burst now!",'good',3);}}
+  else if(!K.final){if(!k.immune&&!k.stun)k.energy+=dt*100/58;if(k.energy>=100)kDark();if(k.hp<=.25)kFinal();}}}
+];
+
+/* ================= game start ================= */
+function makeBots(){const roles=['tank','tank','healer','healer','healer','dps','dps','dps','dps','dps','dps','dps'];roles.splice(roles.indexOf(ROLE),1);
+  G.bots=roles.map((r,i)=>{const a=rnd(0,TAU),d=rnd(18,r==='healer'?95:75);return{id:'b'+i,i,name:BOT_NAMES[i],role:r,x:G.raidSpot.x+Math.cos(a)*d,y:G.raidSpot.y+Math.sin(a)*d,off:{x:Math.cos(a)*d,y:Math.sin(a)*d+(r==='healer'?25:0)},
+    hp:100,alive:true,goal:null,goalT:0,num:0,deb:null,side:i%2?'red':'green',grp:i%2?'B':'A',r:9};});
+  G.tankBots=G.bots.filter(b=>b.role==='tank');}
+function startFight(i){const def=BOSSES[i];selBoss=i;
+  P={x:500,y:520,r:12,hp:100,max:100,mana:100,debuffs:{},buff:{},face:-Math.PI/2,mdir:{x:0,y:-1},dashT:0,dashV:{x:0,y:0},cd:[0,0,0,0],feared:0,fearA:0,stunned:0,carry:null,vuln:1};
+  G={def,t:0,countdown:3,over:false,paused:false,timers:[],zones:[],puddles:[],adds:[],pickups:[],floaters:[],fx:[],bosses:[],bots:[],raidVuln:1,raidDots:[],lust:0,dmgMult:1,
+    info:{},youCount:{},target:null,selBot:null,shake:0,flash:0,wind:null,anchors:null,tk:null,phase:1,deaths:0,raidSpot:{x:500,y:480},alertMsg:null,boltT:0,lastAlert:'',lastAlertT:-9};
+  G.raidDps=(1/def.len)*(ROLE==='dps'?.78:1);G.pDps=.42/def.len;G.botAddDps=ROLE==='dps'?.38:.5;
+  makeBots();def.setup(G);assignTanks();
+  const sp=G.startPos?G.startPos():G.raidSpot;P.x=sp.x+rnd(-20,20);P.y=sp.y+30;
+  if(ROLE==='tank'){const b=G.bosses.find(b=>b.tankedBy==='player');if(b){const a=Math.atan2(b.y-G.raidSpot.y,b.x-G.raidSpot.x);P.x=clamp(b.x+Math.cos(a)*(b.r+22),20,980);P.y=clamp(b.y+Math.sin(a)*(b.r+22),20,680);}}
+  for(const b of G.bots){const s=G.spotFor?G.spotFor(b):G.raidSpot;b.x=s.x+b.off.x;b.y=s.y+b.off.y;}
+  G.floorCv=renderFloor(def);
+  buildBossFrames();buildRaidFrames();buildAbilities();
+  $('#mymp').hidden=ROLE!=='healer';$('#raid').classList.toggle('heal-mode',ROLE==='healer');
+  showScreen('fight');fit();}
+
+/* ================= abilities ================= */
+const ABIL={
+  dps:[{k:'Space',n:'Burst',cd:40,fn:()=>{P.buff.burst=8;alert('Burst!','good',1);}},{k:'E',n:'Interrupt',cd:10,fn:interrupt},{k:'Q',n:'Barrier',cd:40,fn:()=>{P.buff.def=6;}},{k:'Shift',n:'Dash',cd:7,fn:dash}],
+  tank:[{k:'Space',n:'Taunt',cd:4,fn:taunt},{k:'E',n:'Shield Wall',cd:35,fn:()=>{P.buff.wall=8;}},{k:'Q',n:'Interrupt',cd:12,fn:interrupt},{k:'Shift',n:'Charge',cd:7,fn:dash}],
+  healer:[{k:'Space',n:'Healing Pulse',cd:.8,mana:12,fn:pulse},{k:'E',n:'Dispel',cd:4,fn:dispel},{k:'Q',n:'Tranquil Ward',cd:50,fn:()=>{P.buff.ward=8;alert('Tranquil Ward','good',1);}},{k:'Shift',n:'Dash',cd:7,fn:dash}]};
+function useAbility(i){if(!G||G.over||G.paused||screen!=='fight'||G.countdown>0)return;const a=ABIL[ROLE][i];if(P.cd[i]>0||P.stunned>0)return;if(a.mana&&P.mana<a.mana){floatAt(P.x,P.y-30,'No mana','#62bdff');return;}
+  const r=a.fn();if(r===false)return;P.cd[i]=a.cd;if(a.mana)P.mana-=a.mana;}
+function dash(){const d=P.mdir;P.dashT=.16;P.dashV={x:d.x*950,y:d.y*950};}
+function interrupt(){let best=null,bd=380;for(const a of G.adds){if(a.cast&&a.cast.int&&!a.dead){const d=D(a,P);if(d<bd){bd=d;best=a;}}}
+  if(!best){floatAt(P.x,P.y-30,'Nothing to interrupt','#aaa');return false;}floatAt(best.x,best.y-20,'Interrupted!','#ffd34d');best.cast=null;}
+function taunt(){for(const b of G.bosses){if(b.alive&&b.tankedBy==='player'&&G.tk&&G.tk.boss===b&&G.tk.active==='cotank'&&D(b,P)<430){G.tk.active='player';floatAt(b.x,b.y-b.r-10,'Taunted','#5ea9ff');return;}}
+  let best=null,bd=430;for(const a of G.adds){if(a.tauntable&&!a.dead&&a.fix!==P){const d=D(a,P);if(d<bd){bd=d;best=a;}}}
+  if(best){best.fix=P;best.to=null;floatAt(best.x,best.y-20,'Taunted','#5ea9ff');return;}floatAt(P.x,P.y-30,'Nothing to taunt','#aaa');return false;}
+function pulse(){for(const b of G.bots)if(b.alive&&D(b,P)<280)b.hp=Math.min(100,b.hp+18);P.hp=Math.min(P.max,P.hp+18);fxRing(P.x,P.y,280,'#79e079');}
+function dispel(){const pd=Object.entries(P.debuffs).find(([k,d])=>d.dispel);if(pd){delete P.debuffs[pd[0]];pd[1].onDispel();floatAt(P.x,P.y-30,'Dispelled','#b48cff');return;}
+  let t=G.selBot&&G.selBot.alive&&G.selBot.deb&&G.selBot.deb.dispel?G.selBot:null;if(!t)t=G.bots.filter(b=>b.alive&&b.deb&&b.deb.dispel).sort((a,b)=>a.hp-b.hp)[0];
+  if(!t){floatAt(P.x,P.y-30,'Nothing to dispel','#aaa');return false;}const d=t.deb;t.deb=null;d.onDispel&&d.onDispel(t);if(d.onEnd&&!d.onDispel)d.onEnd(t);floatAt(t.x,t.y-20,'Dispelled','#b48cff');}
+function frameHeal(b){if(ROLE!=='healer'||!G||G.over)return;G.selBot=b===P?null:b;if(P.mana<6)return;if(b===P){P.hp=Math.min(P.max,P.hp+28);}else if(b.alive){b.hp=Math.min(100,b.hp+28);}else return;P.mana-=6;}
+
+/* ================= update ================= */
+function validTarget(t){if(!t)return false;if(G.adds.includes(t))return !t.dead&&!t.untargetable;return G.bosses.includes(t)&&t.alive&&!t.untargetable&&!t.hidden;}
+function autoTarget(){let best=null,bs=-1;for(const a of G.adds){if(a.dead||a.untargetable)continue;const d=D(a,P);if(d>360)continue;const s=(a.prio||0)*1000-d;if(s>bs){bs=s;best=a;}}if(best&&(best.prio||0)>0)return best;
+  let bb=null;for(const b of G.bosses){if(!b.alive||b.untargetable||b.hidden||b.immune)continue;if(D(b,P)>360+b.r)continue;if(!bb||b.hp>bb.hp)bb=b;}return bb||best;}
+function update(dt){
+  if(G.countdown>0){G.countdown-=dt;updatePlayer(dt,true);updateBots(dt);return;}
+  G.t+=dt;if(G.lust>0)G.lust-=dt;
+  runTimers();if(G.over)return;
+  updatePlayer(dt);if(G.over)return;
+  // tank swap
+  if(G.tk&&G.tk.boss.alive){const tk=G.tk,sw=G.def.swap;tk.acc+=dt;if(tk.acc>=3){tk.acc=0;if(tk.active==='player'){tk.p++;tk.c=Math.max(0,tk.c-2);}else{tk.c++;tk.p=Math.max(0,tk.p-2);}
+      if(tk.active==='player'&&tk.p>=6){tk.active='cotank';alert(`Co-tank taunted. Let your ${sw} fall off`,'info');}
+      if(tk.active==='cotank'&&tk.c>=4)alert(`TAUNT! Co-tank has ${tk.c} ${sw}`,'you');
+      if(tk.active==='cotank'&&tk.c>=7){lose(`Your co-tank died to ${sw} stacks.`,'Taunt back (Space) once your co-tank reaches 4 or 5 stacks.');return;}}
+    if(tk.p>0)showDeb(sw,tk.p,'#5ea9ff');else delete P.debuffs[sw];info('swap',`Co-tank ${sw}: ${tk.c}`);}
+  // bosses
+  let dmgable=G.bosses.filter(b=>b.alive&&!b.untargetable&&!b.hidden&&!b.immune).length||1;
+  if(G.attacking===undefined)G.attacking=false;
+  if(ROLE==='dps'){if(!validTarget(G.target))G.target=autoTarget();G.attacking=!!(G.target&&D(G.target,P)<=360+(G.target.r||0)&&P.stunned<=0&&P.feared<=0);}else G.attacking=false;
+  const burst=P.buff.burst?2.5:1,lustM=G.lust>0?1.3:1;
+  for(const b of G.bosses){if(!b.alive)continue;
+    if(b.cast){b.cast.t-=dt;if(b.cast&&b.cast.t<=0){const c=b.cast;b.cast=null;c.onDone&&c.onDone(b);if(G.over)return;}}
+    if(b.stun>0)b.stun-=dt;
+    const te=tankEnt(b);
+    if(!b.untargetable&&!b.hidden){let tx=b.tankSpot.x,ty=b.tankSpot.y;if(te===P&&!b.forceSpot){if(D(b,P)>b.r+P.r+8){tx=P.x;ty=P.y;}else{tx=b.x;ty=b.y;}}
+      if(!b.stationary&&!(b.stun>0)){const d=Math.hypot(tx-b.x,ty-b.y);if(d>2){const s=Math.min(d,b.speed*dt);b.x+=(tx-b.x)/d*s;b.y+=(ty-b.y)/d*s;}}
+      if(te===P)b.face=ang(b,P);else{const rs=G.raidSpot;const a=Math.atan2(b.y-rs.y,b.x-rs.x);b.face=Math.hypot(b.y-rs.y,b.x-rs.x)<5?-Math.PI/2:a;}
+      if(te===P&&!b.immune&&!(b.stun>0)){b.swing-=dt;if(b.swing<=0){b.swing=1.6;if(D(b,P)<b.r+P.r+45)hurt(5*(1+.22*(G.tk&&G.tk.boss===b?G.tk.p:0)),b.short+' melee',true);}}}
+    if(b.untargetable||b.hidden||b.immune)continue;
+    let dmg=G.raidDps/dmgable*lustM*G.dmgMult*(b.botMult||1)*dt;
+    if(G.attacking&&G.target===b)dmg+=G.pDps*burst*G.dmgMult*dt;
+    if(ROLE==='tank'&&te===P)dmg+=G.pDps*.25*dt;
+    dmg*=(1-b.dr)*b.vuln*(b.stun>0?1.5:1);
+    if(b.shield>0){const s=Math.min(b.shield,dmg);b.shield-=s;dmg-=s;}
+    b.hp-=dmg;if(b.hp<=0){b.hp=0;b.alive=false;b.cast=null;fxRing(b.x,b.y,120,b.color);floatAt(b.x,b.y-b.r-10,b.short+' defeated','#ffd34d');if(G.def.onBossDeath)G.def.onBossDeath(G,b);if(G.target===b)G.target=null;if(G.over)return;}}
+  // bots, adds, zones
+  updateBots(dt);updateAdds(dt,burst);if(G.over)return;updateZones(dt);if(G.over)return;
+  // raid dots
+  let rd=0;for(const d of G.raidDots){rd+=d.dps;d.t-=dt;}G.raidDots=G.raidDots.filter(d=>d.t>0);
+  if(rd>0){hurt(rd*G.raidVuln*dt,'raid damage',true);for(const b of G.bots){if(!b.alive)continue;b.hp-=rd*G.raidVuln*dt*(P.buff.ward?.7:1);if(b.hp<=0)killBot(b,'raid damage');}}
+  if(G.over)return;
+  G.def.update&&G.def.update(G,dt);if(G.over)return;
+  const req=G.bosses.filter(b=>b.required);if(req.length&&req.every(b=>!b.alive)){win();return;}
+  if(G.t>G.def.enrage)lose(`Berserk: the fight passed ${fmtT(G.def.enrage)}.`,'Spend more time attacking. Burst during Bloodlust and damage windows.');
+}
+function updatePlayer(dt,frozen){
+  for(let i=0;i<4;i++)P.cd[i]=Math.max(0,P.cd[i]-dt);for(const k in P.buff){P.buff[k]-=dt;if(P.buff[k]<=0)delete P.buff[k];}
+  let mx=0,my=0;if(keys.KeyW||keys.ArrowUp)my-=1;if(keys.KeyS||keys.ArrowDown)my+=1;if(keys.KeyA||keys.ArrowLeft)mx-=1;if(keys.KeyD||keys.ArrowRight)mx+=1;
+  if(joy.on){mx+=joy.vx;my+=joy.vy;}
+  if(P.stunned>0){P.stunned-=dt;mx=my=0;}else if(P.feared>0){P.feared-=dt;if(Math.random()<dt*2)P.fearA=rnd(0,TAU);mx=Math.cos(P.fearA);my=Math.sin(P.fearA);}
+  const l=Math.hypot(mx,my);if(l>0){const s=Math.min(1,l);mx=mx/l*s;my=my/l*s;P.face=Math.atan2(my,mx);P.mdir={x:mx/s,y:my/s};}
+  let slow=1;if(!frozen)for(const p of G.puddles)if(p.slow&&Math.hypot(P.x-p.x,P.y-p.y)<p.r)slow=.45;
+  let vx=mx*165*slow,vy=my*165*slow;if(P.dashT>0){P.dashT-=dt;vx=P.dashV.x;vy=P.dashV.y;}
+  if(G.wind&&!frozen){const anch=(G.anchors||[]).some(c=>Math.hypot(P.x-c.x,P.y-c.y)<70);if(!anch){vx+=G.wind.x;vy+=G.wind.y;}}
+  P.x+=vx*dt;P.y+=vy*dt;
+  if(G.def.arena==='circle'){const d=Math.hypot(P.x-500,P.y-350);if(d>G.def.R+4){if(frozen){P.x=500+(P.x-500)/d*(G.def.R-10);P.y=350+(P.y-350)/d*(G.def.R-10);}else{lose('You fell off the Altar of the Six Winds.','During Raging Crosswinds, stand inside a cyst\'s dashed ring. Drop your Surge cyst on the marker.');return;}}}
+  else{P.x=clamp(P.x,14,986);P.y=clamp(P.y,14,686);}
+  if(frozen)return;
+  for(const name of Object.keys(P.debuffs)){const d=P.debuffs[name];if(!d||d.show)continue;d.t-=dt;if(d.dot)hurt(d.dot*dt*(d.stacks||1),name,true);if(G.over)return;if(d.t<=0&&P.debuffs[name]===d){delete P.debuffs[name];d.onExpire&&d.onExpire();if(G.over)return;}}
+  const reg=ROLE==='healer'?1.2:4;P.hp=Math.min(P.max,P.hp+(reg+(P.buff.ward?4:0))*dt);if(ROLE==='healer')P.mana=Math.min(100,P.mana+3.5*dt);
+  for(const p of G.puddles){p.t-=dt;if(p.cd>0)p.cd-=dt;const inP=Math.hypot(P.x-p.x,P.y-p.y)<p.r;if(!inP)continue;if(p.dps>0)hurt(p.dps*dt,p.name,true);
+    if(p.el){const fire=P.debuffs['Burning Flames'],frost=P.debuffs['Piercing Frost'];
+      if(p.el==='frost'&&fire){delete P.debuffs['Burning Flames'];p.t=0;alert('Burning Flames cleared','good');}
+      else if(p.el==='fire'&&frost){delete P.debuffs['Piercing Frost'];p.t=0;alert('Piercing Frost cleared','good');}
+      else if(((p.el==='fire'&&fire)||(p.el==='frost'&&frost))&&p.cd<=0){p.cd=1;hurt(10,p.name);}}}
+  G.puddles=G.puddles.filter(p=>p.t>0);
+  for(const k of G.pickups){if(k.update)k.update(k,dt);}G.pickups=G.pickups.filter(k=>!k.done);
+  if(ROLE==='dps'&&G.attacking&&G.target){G.boltT-=dt;if(G.boltT<=0){G.boltT=.35;G.fx.push({k:'bolt',x1:P.x,y1:P.y,x2:G.target.x,y2:G.target.y,t:.18,t0:.18,color:P.buff.burst?'#ffd34d':'#ff9b6a'});}}
+}
+function updateBots(dt){const rs=G.raidSpot;let cx=0,cy=0,n=0;
+  for(const b of G.bots){if(!b.alive)continue;let tx,ty;
+    if(b.goal){tx=b.goal.x;ty=b.goal.y;b.goalT-=dt;if(b.goalT<=0)b.goal=null;}
+    else if(b.role==='tank'){const tp=tankBotPos(b);if(tp){tx=tp.x;ty=tp.y;}else{tx=rs.x+b.off.x*.4;ty=rs.y-50;}}
+    else{const base=G.spotFor?G.spotFor(b):rs;tx=base.x+b.off.x;ty=base.y+b.off.y;}
+    if(!b.goal&&b.role!=='tank')[tx,ty]=avoidPt(tx,ty);
+    const d=Math.hypot(tx-b.x,ty-b.y);if(d>2){const s=Math.min(d,(b.role==='tank'?200:170)*dt);b.x+=(tx-b.x)/d*s;b.y+=(ty-b.y)/d*s;}
+    if(G.def.arena==='circle'){const dd=Math.hypot(b.x-500,b.y-350);if(dd>G.def.R-12){b.x=500+(b.x-500)/dd*(G.def.R-12);b.y=350+(b.y-350)/dd*(G.def.R-12);}}else{b.x=clamp(b.x,12,988);b.y=clamp(b.y,12,688);}
+    if(G.countdown>0)continue;
+    b.hp=Math.min(100,b.hp+(ROLE==='healer'?1.3:5)*dt+(P.buff.ward?4*dt:0));
+    if(b.deb){const d=b.deb;d.t-=dt;b.hp-=d.dot*dt;if(ROLE!=='healer'&&d.dispel&&d.t<d.dur*.4&&!d.noAuto){b.deb=null;d.onDispel?d.onDispel(b):(d.onEnd&&d.onEnd(b));}
+      else if(d.t<=0){b.deb=null;d.onExpire?d.onExpire(b):(d.onEnd&&d.onEnd(b));}if(b.hp<=0)killBot(b,d.name);if(G.over)return;}
+    if(b.role!=='tank'){cx+=b.x;cy+=b.y;n++;}}
+  G.rc=n?{x:cx/n,y:cy/n}:{x:rs.x,y:rs.y};}
+function updateAdds(dt,burst){for(const a of G.adds){if(a.dead)continue;
+    if(a.cast){a.cast.t-=dt;if(a.cast.kick==='bot'&&a.cast.t<a.cast.dur*.35){a.cast=null;floatAt(a.x,a.y-18,'Kicked','#ccc');}else if(a.cast.t<=0){const c=a.cast;a.cast=null;c.onDone&&c.onDone(a);if(G.over)return;}}
+    if(a.tick){a.tick(a,dt);if(G.over)return;if(a.dead)continue;}
+    const tg=a.fix||a.to;if(tg&&a.speed){const d=D(a,tg);if(d>1){const s=Math.min(d,a.speed*dt);a.x+=(tg.x-a.x)/d*s;a.y+=(tg.y-a.y)/d*s;}
+      if(a.to&&!a.fix&&a.arrive>0&&D(a,a.to)<a.arrive){a.dead=true;a.onArrive&&a.onArrive(a);if(G.over)return;continue;}}
+    if((a.fix===P||a.touchAny)&&a.onTouch&&D(a,P)<a.r+P.r){a.onTouch(a);if(G.over)return;if(a.dead)continue;}
+    if(a.heart){if(G.attacking&&G.target===a){const u=G.U.u;u.hp-=G.pDps*burst*2*G.dmgMult*dt;}}
+    else if(!a.untargetable){let m=a.noBot?0:G.botAddDps*(a.botMult||1);if(G.bosses.some(b=>b.cleave&&b.alive&&!b.immune&&D(a,b)<180))m*=2;let dmg=m*dt;
+      if(G.attacking&&G.target===a)dmg+=1*burst*dt;const dr=G.def.addDr?G.def.addDr(a):a.dr;a.hp-=dmg*(1-dr);
+      if(a.hp<=0){a.dead=true;floatAt(a.x,a.y-16,a.name.split(' ').pop()+' down','#cfe8b8');a.onDeath&&a.onDeath(a);if(G.over)return;continue;}}
+    if(a.life!=null){a.life-=dt;if(a.life<=0){a.dead=true;a.onExpire&&a.onExpire(a);if(G.over)return;}}}
+  G.adds=G.adds.filter(a=>!a.dead);if(G.target&&G.target.dead)G.target=null;}
+function updateZones(dt){for(const z of G.zones){
+    if(z.t>0){z.t-=dt;if(z.t>z.lock){if(z.follow){z.x=z.follow.x;z.y=z.follow.y;}if(z.aim){if(z.from){z.x=z.from.x;z.y=z.from.y;}const tg=z.aim();if(tg)z.ang=Math.atan2(tg.y-z.y,tg.x-z.x);}}
+      if(z.touch&&z.t>0&&inZone(z,P,P.r*.6)){z.t=0;}
+      if(z.t<=0){fireZone(z);if(G.over)return;if(!(z.live>0))z.dead=true;}}
+    else if(z.live>0){z.live-=dt;z.onLive&&z.onLive(z,dt);if(z.hcd>0)z.hcd-=dt;
+      if(inZone(z,P,P.r*.5)&&(z.repeat?!(z.hcd>0):!z.hitP)){z.hitP=true;z.hcd=1.4;z.onLiveHit&&z.onLiveHit(z);if(G.over)return;}if(z.live<=0)z.dead=true;}
+    else z.dead=true;}
+  G.zones=G.zones.filter(z=>!z.dead);}
+
+/* ================= drawing ================= */
+function drawArrow(c,x,y,a,len,col){c.save();c.translate(x,y);c.rotate(a);c.strokeStyle=col;c.fillStyle=col;c.lineWidth=5;c.beginPath();c.moveTo(0,0);c.lineTo(len,0);c.stroke();c.beginPath();c.moveTo(len+14,0);c.lineTo(len-6,-12);c.lineTo(len-6,12);c.fill();c.restore();}
+function drawPine(c,x,y,r,ring,isP,dead,face){c.save();c.translate(x,y);if(dead)c.globalAlpha=.3;
+  c.fillStyle=rgba(ring,.35);c.beginPath();c.ellipse(0,r*.95,r*1.25,r*.45,0,0,TAU);c.fill();c.strokeStyle=ring;c.lineWidth=isP?2.5:1.5;c.stroke();
+  c.fillStyle=dead?'#4c5a4e':'#3f9b47';for(const i of[-1,0,1]){c.beginPath();c.moveTo(i*r*.32,-r*.72);c.lineTo(i*r*.7,-r*(1.62-Math.abs(i)*.32));c.lineTo(i*r*.05+(i===0?r*.18:0),-r*.78);c.fill();}
+  const g=c.createRadialGradient(-r*.3,-r*.35,1,0,0,r*1.1);g.addColorStop(0,dead?'#777':'#ffe07a');g.addColorStop(1,dead?'#444':'#d98a17');c.fillStyle=g;c.beginPath();c.ellipse(0,0,r*.82,r,0,0,TAU);c.fill();
+  c.save();c.clip();c.strokeStyle='rgba(110,55,0,.45)';c.lineWidth=1;for(let k=-3;k<=3;k++){c.beginPath();c.moveTo(k*r*.4-r,-r);c.lineTo(k*r*.4+r,r);c.stroke();c.beginPath();c.moveTo(k*r*.4+r,-r);c.lineTo(k*r*.4-r,r);c.stroke();}c.restore();
+  if(isP){c.strokeStyle='#ffffff';c.lineWidth=2;c.beginPath();c.ellipse(0,0,r*.82,r,0,0,TAU);c.stroke();if(face!=null){c.fillStyle='#fff';c.beginPath();c.moveTo(Math.cos(face)*(r+9),Math.sin(face)*(r+9));c.lineTo(Math.cos(face+.35)*(r+2),Math.sin(face+.35)*(r+2));c.lineTo(Math.cos(face-.35)*(r+2),Math.sin(face-.35)*(r+2));c.fill();}}
+  c.restore();}
+function zoneColor(z){if(z.color)return z.color;if(z.kind==='soak')return z.mine?'#5fe0ff':'#ffd34d';if(z.kind==='mark')return '#c08bff';return '#ff5b3a';}
+function zonePath(c,z){c.beginPath();if(z.type==='circle')c.arc(z.x,z.y,z.r,0,TAU);else if(z.type==='line'){c.save();c.translate(z.x,z.y);c.rotate(z.ang);c.rect(0,-z.w/2,z.len,z.w);c.restore();}
+  else if(z.type==='cone'){c.moveTo(z.x,z.y);c.arc(z.x,z.y,z.r,z.ang-z.arc/2,z.ang+z.arc/2);c.closePath();}else if(z.type==='rect')c.rect(z.x,z.y,z.w,z.h);}
+function drawZone(c,z){const col=zoneColor(z);const live=z.t<=0&&z.live>0;const pr=z.t>0?1-z.t/z.t0:1;
+  if(live&&z.type==='rect'&&z.w>=W*.0){/* band */}
+  c.save();zonePath(c,z);c.fillStyle=rgba(col,live?.6:.15);c.fill();c.strokeStyle=rgba(col,.85);c.lineWidth=2;c.stroke();
+  if(!live){if(z.type==='circle'){c.beginPath();c.arc(z.x,z.y,Math.max(0,z.r*pr),0,TAU);c.fillStyle=rgba(col,.22);c.fill();}else{zonePath(c,z);c.fillStyle=rgba(col,.22*pr);c.fill();}}
+  let lab=z.label||'';if(z.kind==='soak'){const cnt=z.bots.filter(b=>b.alive&&D(b,z)<z.r+6).length+(inZone(z,P,P.r*.6)?1:0);lab=(lab?lab+' ':'')+`${cnt}/${z.need}`;if(z.mine)lab+=' YOU';}
+  if(lab){c.fillStyle=col;c.font='700 13px '+FONT;c.textAlign='center';let lx=z.x,ly=z.y;if(z.type==='line'||z.type==='cone'){lx=z.x+Math.cos(z.ang)*Math.min(z.len||z.r,z.r||z.len)*.55;ly=z.y+Math.sin(z.ang)*Math.min(z.len||z.r,z.r||z.len)*.55;}
+    if(z.type==='rect'){lx=z.x+z.w/2;ly=z.y+z.h/2;}c.strokeStyle='#000';c.lineWidth=3;c.strokeText(lab,lx,ly+4);c.fillText(lab,lx,ly+4);}
+  c.restore();}
+let FONT='"Barlow Semi Condensed", "Arial Narrow", sans-serif';
+function drawBoss(c,b){if(b.hidden){c.save();c.globalAlpha=.15;c.fillStyle=b.color;c.beginPath();c.arc(b.x,b.y,b.r,0,TAU);c.fill();c.restore();return;}
+  if(!b.alive){c.save();c.globalAlpha=.25;c.fillStyle='#555';c.beginPath();c.arc(b.x,b.y,b.r*.9,0,TAU);c.fill();c.restore();return;}
+  c.save();if(b.ghost)c.globalAlpha=.6+.15*Math.sin(G.t*2);
+  if(G.E&&G.E.poss===b){const p=.5+.5*Math.sin(G.t*8);c.fillStyle=rgba('#b48cff',.25+.25*p);c.beginPath();c.arc(b.x,b.y,b.r+16,0,TAU);c.fill();}
+  c.fillStyle='rgba(0,0,0,.35)';c.beginPath();c.ellipse(b.x,b.y+b.r*.75,b.r*1.05,b.r*.4,0,0,TAU);c.fill();
+  const g=c.createRadialGradient(b.x-b.r*.35,b.y-b.r*.4,2,b.x,b.y,b.r*1.1);g.addColorStop(0,shade(b.color,60));g.addColorStop(.6,b.color);g.addColorStop(1,shade(b.color,-60));c.fillStyle=g;c.beginPath();c.arc(b.x,b.y,b.r,0,TAU);c.fill();
+  c.strokeStyle='rgba(0,0,0,.28)';c.lineWidth=2;for(let k=0;k<5;k++){const a=b.face+Math.PI+(k-2)*.5;c.beginPath();c.arc(b.x+Math.cos(a)*b.r*.45,b.y+Math.sin(a)*b.r*.45,b.r*.3,a-1.2,a+1.2);c.stroke();}
+  for(const s of[-1,1]){const a=b.face+s*.42;const ex=b.x+Math.cos(a)*b.r*.62,ey=b.y+Math.sin(a)*b.r*.62;c.fillStyle='#fff2a8';c.beginPath();c.arc(ex,ey,b.r*.11,0,TAU);c.fill();c.fillStyle='#1a0c00';c.beginPath();c.arc(ex+Math.cos(b.face)*1.5,ey+Math.sin(b.face)*1.5,b.r*.05,0,TAU);c.fill();}
+  c.fillStyle='#f4f0d8';for(const s of[-1,1]){const a=b.face+s*.18;const fx=b.x+Math.cos(a)*b.r*.95,fy=b.y+Math.sin(a)*b.r*.95;c.beginPath();c.moveTo(fx,fy);c.lineTo(fx+Math.cos(b.face)*b.r*.3,fy+Math.sin(b.face)*b.r*.3);c.lineTo(fx+Math.cos(a+s*.4)*3,fy+Math.sin(a+s*.4)*3);c.fill();}
+  if(b.immune){c.strokeStyle='rgba(255,255,255,.8)';c.setLineDash([6,6]);c.lineDashOffset=-G.t*30;c.lineWidth=2;c.beginPath();c.arc(b.x,b.y,b.r+8,0,TAU);c.stroke();c.setLineDash([]);}
+  if(b.dr>.5){c.strokeStyle='#b48cff';c.lineWidth=4;c.beginPath();c.arc(b.x,b.y,b.r+6,0,TAU);c.stroke();}
+  if(b.shield>0){c.strokeStyle='#cfd6ff';c.lineWidth=5;c.beginPath();c.arc(b.x,b.y,b.r+10,0,TAU*b.shield/.11);c.stroke();}
+  if(b.stun>0){c.fillStyle='#f2b631';c.font='700 14px '+FONT;c.textAlign='center';c.fillText('STUNNED',b.x,b.y+b.r+18);}
+  if(b.cast){c.strokeStyle='#ffd34d';c.lineWidth=3;c.beginPath();c.arc(b.x,b.y,b.r+4,-Math.PI/2,-Math.PI/2+TAU*(1-b.cast.t/b.cast.dur));c.stroke();}
+  if(G.target===b){c.strokeStyle='#f2b631';c.setLineDash([4,5]);c.lineWidth=2;c.beginPath();c.arc(b.x,b.y,b.r+13,0,TAU);c.stroke();c.setLineDash([]);}
+  c.fillStyle='#fff';c.font='700 14px '+FONT;c.textAlign='center';c.strokeStyle='#000';c.lineWidth=3;const lab=b.short+(b.hpHidden?'':` ${Math.ceil(b.hp*100)}%`);c.strokeText(lab,b.x,b.y-b.r-10);c.fillText(lab,b.x,b.y-b.r-10);
+  c.restore();}
+function drawAdd(c,a){c.save();if(a.untargetable)c.globalAlpha=.85;
+  if(a.mine){c.strokeStyle='#5fe0ff';c.lineWidth=3;c.beginPath();c.arc(a.x,a.y,a.r+7,0,TAU);c.stroke();}
+  const g=c.createRadialGradient(a.x-a.r*.3,a.y-a.r*.3,1,a.x,a.y,a.r);g.addColorStop(0,shade(a.color,50));g.addColorStop(1,shade(a.color,-40));c.fillStyle=g;c.beginPath();c.arc(a.x,a.y,a.r,0,TAU);c.fill();
+  if(!a.untargetable&&!a.noBot&&a.maxHp<90){c.strokeStyle='#8be05a';c.lineWidth=3;c.beginPath();c.arc(a.x,a.y,a.r+3,-Math.PI/2,-Math.PI/2+TAU*clamp(a.hp/a.maxHp,0,1));c.stroke();}
+  if(a.cast){c.strokeStyle=a.cast.kick==='player'?'#5fe0ff':'#ffd34d';c.lineWidth=3;c.beginPath();c.arc(a.x,a.y,a.r+7,-Math.PI/2,-Math.PI/2+TAU*(1-a.cast.t/a.cast.dur));c.stroke();
+    c.fillStyle=a.cast.kick==='player'?'#5fe0ff':'#ffd34d';c.font='700 12px '+FONT;c.textAlign='center';c.fillText(a.cast.kick==='player'?'KICK!':a.cast.name,a.x,a.y-a.r-10);}
+  if(G.target===a){c.strokeStyle='#f2b631';c.setLineDash([4,4]);c.lineWidth=2;c.beginPath();c.arc(a.x,a.y,a.r+10,0,TAU);c.stroke();c.setLineDash([]);}
+  if(a.r>=16||a.prio>=3){c.fillStyle='#e9f0e3';c.font='600 12px '+FONT;c.textAlign='center';c.strokeStyle='#000';c.lineWidth=3;c.strokeText(a.name,a.x,a.y+a.r+14);c.fillText(a.name,a.x,a.y+a.r+14);}
+  c.restore();}
+function drawPickup(c,k){c.save();c.translate(k.x,k.y);if(k.mine){c.strokeStyle='#5fe0ff';c.lineWidth=3;c.beginPath();c.arc(0,0,k.r+9,0,TAU);c.stroke();}
+  if(k.kind==='crate'){c.fillStyle='#8a5a2b';c.fillRect(-15,-15,30,30);c.strokeStyle='#4a2f12';c.lineWidth=3;c.strokeRect(-15,-15,30,30);c.beginPath();c.moveTo(-15,-15);c.lineTo(15,15);c.moveTo(15,-15);c.lineTo(-15,15);c.stroke();
+    if(k.prog>0){c.strokeStyle='#ffd34d';c.beginPath();c.arc(0,0,24,-Math.PI/2,-Math.PI/2+TAU*k.prog/1.4);c.stroke();}c.fillStyle='#fff';c.font='600 11px '+FONT;c.textAlign='center';c.fillText(Math.ceil(k.t)+'s',0,32);}
+  else if(k.kind==='fish'){drawFish(c,0,0,1);}
+  c.restore();}
+function drawFish(c,x,y,s){c.save();c.translate(x,y);c.scale(s,s);c.fillStyle='#8aa35a';c.beginPath();c.ellipse(0,0,14,7,0,0,TAU);c.fill();c.beginPath();c.moveTo(12,0);c.lineTo(22,-7);c.lineTo(22,7);c.fill();c.fillStyle='#000';c.beginPath();c.arc(-8,-2,1.6,0,TAU);c.fill();c.strokeStyle='#5a6b2a';c.beginPath();c.moveTo(-2,-6);c.lineTo(2,6);c.stroke();c.restore();}
+function draw(){const c=ctx;c.setTransform(scale*dpr,0,0,scale*dpr,0,0);
+  let sx=0,sy=0;if(G.shake>0){sx=rnd(-G.shake,G.shake);sy=rnd(-G.shake,G.shake);}c.save();c.translate(sx,sy);
+  c.drawImage(G.floorCv,0,0);
+  G.def.under&&G.def.under(c,G);
+  for(const p of G.puddles){const gr=c.createRadialGradient(p.x,p.y,2,p.x,p.y,p.r);gr.addColorStop(0,rgba(p.color,.55));gr.addColorStop(1,rgba(p.color,.2));c.fillStyle=gr;c.beginPath();
+    for(let i=0;i<=24;i++){const a=i/24*TAU;const rr=p.r*(1+.05*Math.sin(a*5+G.t*2+p.x));i?c.lineTo(p.x+Math.cos(a)*rr,p.y+Math.sin(a)*rr):c.moveTo(p.x+Math.cos(a)*rr,p.y+Math.sin(a)*rr);}c.fill();c.strokeStyle=rgba(p.color,.8);c.lineWidth=1.5;c.stroke();}
+  for(const z of G.zones)drawZone(c,z);
+  for(const k of G.pickups)drawPickup(c,k);
+  for(const a of G.adds)drawAdd(c,a);
+  for(const b of G.bosses)drawBoss(c,b);
+  for(const b of G.bots){drawPine(c,b.x,b.y,9,ROLE_C[b.role],false,!b.alive);if(b.alive&&b.deb){c.fillStyle=b.deb.color||'#b48cff';c.beginPath();c.arc(b.x+9,b.y-12,4,0,TAU);c.fill();}
+    if(b.num){c.fillStyle='#ffd34d';c.beginPath();c.arc(b.x,b.y-24,11,0,TAU);c.fill();c.fillStyle='#1a1200';c.font='800 15px '+FONT;c.textAlign='center';c.fillText(b.num,b.x,b.y-19);}}
+  drawPine(c,P.x,P.y,P.r,ROLE_C[ROLE],true,false,P.face);
+  if(P.buff.wall||P.buff.def||P.buff.ward){c.strokeStyle='rgba(150,200,255,.7)';c.lineWidth=2;c.beginPath();c.arc(P.x,P.y,P.r+10,0,TAU);c.stroke();}
+  if(P.buff.burst){c.strokeStyle='rgba(242,182,49,.8)';c.lineWidth=2;c.beginPath();c.arc(P.x,P.y,P.r+13+2*Math.sin(G.t*20),0,TAU);c.stroke();}
+  if(P.carry==='fish')drawFish(c,P.x,P.y-30,.8);
+  if(G.S&&G.S.stasis&&!G.S.solved){c.fillStyle='#5fe0ff';c.beginPath();c.arc(P.x,P.y-30,13,0,TAU);c.fill();c.fillStyle='#00151a';c.font='800 16px '+FONT;c.textAlign='center';c.fillText(G.S.pmark,P.x,P.y-24);}
+  if(P.feared>0||P.stunned>0){c.fillStyle='#b48cff';c.font='700 13px '+FONT;c.textAlign='center';c.fillText(P.stunned>0?'STUNNED':'FEARED',P.x,P.y+P.r+22);}
+  for(const f of G.fx){const p=1-f.t/f.t0;if(f.k==='ring'){c.strokeStyle=rgba(f.color,1-p);c.lineWidth=3;c.beginPath();c.arc(f.x,f.y,f.r*p,0,TAU);c.stroke();}
+    else if(f.k==='bolt'){c.strokeStyle=rgba(f.color,1-p);c.lineWidth=3;c.beginPath();const mx=f.x1+(f.x2-f.x1)*p,my=f.y1+(f.y2-f.y1)*p;c.moveTo(f.x1+(f.x2-f.x1)*Math.max(0,p-.3),f.y1+(f.y2-f.y1)*Math.max(0,p-.3));c.lineTo(mx,my);c.stroke();}}
+  if(G.wind){c.save();c.globalAlpha=.25;const a=Math.atan2(G.wind.y,G.wind.x);for(let i=0;i<9;i++){const ph=(G.t*.7+i/9)%1;const px=500+Math.cos(a)*(ph*700-350)+Math.cos(a+Math.PI/2)*((i-4)*70);const py=350+Math.sin(a)*(ph*700-350)+Math.sin(a+Math.PI/2)*((i-4)*70);drawArrow(c,px,py,a,40,'#e9f0e3');}c.restore();}
+  G.def.over&&G.def.over(c,G);
+  for(const f of G.floaters){c.globalAlpha=clamp(f.t/1.2,0,1);c.fillStyle=f.color;c.font='700 14px '+FONT;c.textAlign='center';c.strokeStyle='#000';c.lineWidth=3;c.strokeText(f.text,f.x,f.y);c.fillText(f.text,f.x,f.y);c.globalAlpha=1;}
+  if(joy.on){c.strokeStyle='rgba(255,255,255,.35)';c.lineWidth=3;c.beginPath();c.arc(joy.x0,joy.y0,55,0,TAU);c.stroke();c.fillStyle='rgba(255,255,255,.35)';c.beginPath();c.arc(joy.x0+joy.vx*55,joy.y0+joy.vy*55,22,0,TAU);c.fill();}
+  c.restore();
+  if(G.flash>0){c.fillStyle=`rgba(255,40,30,${G.flash*.5})`;c.fillRect(0,0,W,H);}}
+function tickFx(dt){for(const f of G.floaters){f.t-=dt;f.y-=28*dt;}G.floaters=G.floaters.filter(f=>f.t>0);for(const f of G.fx)f.t-=dt;G.fx=G.fx.filter(f=>f.t>0);G.shake=Math.max(0,G.shake-dt*30);G.flash=Math.max(0,G.flash-dt*1.6);if(G.alertMsg){G.alertMsg.t-=dt;if(G.alertMsg.t<=0)G.alertMsg=null;}}
+
+/* ================= HUD ================= */
+let bfEls=[],rfEls=[],abEls=[];
+function buildBossFrames(){const bar=$('#bossbar');bar.innerHTML='';bfEls=[];for(const b of G.bosses){if(b.hidden&&!b.alive)continue;const el=document.createElement('div');el.className='bf';
+  el.innerHTML=`<div class="bf-top"><span class="nm"></span><span class="pct"></span></div>${b.hpHidden?'':'<div class="bar hp"><i></i></div>'}${b.energyName?'<div class="bar en"><i></i></div>':''}<div class="cast"></div>`;bar.appendChild(el);bfEls.push({b,el,nm:el.querySelector('.nm'),pct:el.querySelector('.pct'),hp:el.querySelector('.hp>i'),en:el.querySelector('.en>i'),cast:el.querySelector('.cast')});}}
+function buildRaidFrames(){const r=$('#raid');r.innerHTML='';rfEls=[];for(const u of[P,...G.bots]){const el=document.createElement('div');el.className='rf'+(u===P?' me':'');el.innerHTML='<i></i><span></span>';el.querySelector('span').textContent=u===P?'You':u.name;el.querySelector('i').style.background=ROLE_C[u===P?ROLE:u.role];
+  el.addEventListener('pointerdown',e=>{e.stopPropagation();frameHeal(u);});r.appendChild(el);rfEls.push({u,el,bar:el.querySelector('i')});}}
+function buildAbilities(){const box=$('#abil');box.innerHTML='';abEls=[];ABIL[ROLE].forEach((a,i)=>{const b=document.createElement('button');b.className='ab';b.type='button';b.innerHTML=`<span class="k">${a.k}</span><span class="n">${a.n}</span><span class="cd"></span><span class="cdt"></span>`;
+  b.addEventListener('pointerdown',e=>{e.preventDefault();useAbility(i);});box.appendChild(b);abEls.push({b,cd:b.querySelector('.cd'),cdt:b.querySelector('.cdt')});});}
+let debSig='';
+function hud(){if(!G)return;
+  for(const f of bfEls){const b=f.b;f.el.classList.toggle('dead',!b.alive&&!b.hidden);let tag='';if(b.immune)tag='<span class="tag">Immune</span>';else if(b.dr>.5)tag='<span class="tag">99% DR</span>';else if(b.stun>0)tag='<span class="tag">Stunned</span>';else if(b.vuln>1)tag='<span class="tag">+30% dmg</span>';
+    const nm=b.short+tag;if(f.nmHtml!==nm){f.nm.innerHTML=nm;f.nmHtml=nm;}f.pct.textContent=b.hpHidden?'':(b.alive?(b.hp*100).toFixed(1)+'%':'Dead');if(f.hp)f.hp.style.width=(b.hp*100)+'%';if(f.en)f.en.style.width=clamp(b.energy,0,100)+'%';
+    f.cast.textContent=b.cast?`${b.cast.name} ${Math.max(0,b.cast.t).toFixed(1)}s`:(b.shield>0?`Veil of Twilight ${(b.shield/.11*100).toFixed(0)}%`:' ');}
+  $('#myhp>i').style.width=(P.hp/P.max*100)+'%';$('#myhp>b').textContent=`You · ${ROLE_N[ROLE]} · ${Math.ceil(P.hp)} / ${P.max}`;
+  if(ROLE==='healer'){$('#mymp>i').style.width=P.mana+'%';$('#mymp>b').textContent=`Mana ${Math.floor(P.mana)}`;}
+  const ds=Object.entries(P.debuffs);const sig=ds.map(([k,d])=>k+(d.stacks||'')+(d.show?'':Math.ceil(d.t))).join('|')+Object.keys(P.buff).join(',');
+  if(sig!==debSig){debSig=sig;const box=$('#debs');box.innerHTML='';for(const[k,d]of ds){const s=document.createElement('span');s.className='db';s.style.color=d.color;s.textContent=k+(d.stacks?` ×${d.stacks}`:'')+(d.show?'':` ${Math.ceil(d.t)}s`)+(d.dispel?' ◆':'');box.appendChild(s);}
+    for(const k of Object.keys(P.buff)){const s=document.createElement('span');s.className='db';s.style.color='#9fd0ff';s.textContent={burst:'Burst',def:'Barrier',wall:'Shield Wall',ward:'Tranquil Ward'}[k]||k;box.appendChild(s);}}
+  ABIL[ROLE].forEach((a,i)=>{const e=abEls[i];if(!e)return;const p=a.cd?P.cd[i]/a.cd:0;e.cd.style.setProperty('--p',p);e.cdt.textContent=P.cd[i]>1?Math.ceil(P.cd[i]):'';e.b.classList.toggle('ready',P.cd[i]<=0&&!(a.mana&&P.mana<a.mana));});
+  for(const f of rfEls){const u=f.u;const hp=u===P?P.hp/P.max*100:u.hp;f.bar.style.width=clamp(hp,0,100)+'%';f.el.classList.toggle('dead',u!==P&&!u.alive);f.el.classList.toggle('deb',u===P?Object.values(P.debuffs).some(d=>d.dispel):!!(u.deb&&u.deb.dispel));f.el.classList.toggle('sel',G.selBot===u);}
+  const box=$('#assign');const html=Object.values(G.info).map(t=>`<div class="chip">${t}</div>`).join('')+(G.lust>0?'<div class="chip" style="color:var(--gold)">Bloodlust</div>':'');if(box._h!==html){box.innerHTML=html;box._h=html;}
+  const al=$('#alert');if(G.alertMsg){if(al.textContent!==G.alertMsg.text)al.textContent=G.alertMsg.text;al.className=G.alertMsg.kind;al.style.opacity=1;}else al.style.opacity=0;
+  $('#count').textContent=G.countdown>0?Math.ceil(G.countdown):'';$('#timer').textContent=fmtT(G.t);}
+
+/* ================= screens ================= */
+function showScreen(s){screen=s;$('#menu').hidden=s!=='menu';$('#brief').hidden=s!=='brief';$('#result').hidden=s!=='result';$('#pause').hidden=s!=='pause';if(s==='menu')renderMenu();}
+function rolePine(role,size){const c=document.createElement('canvas');c.width=size*2;c.height=size*2;c.style.width=size+'px';c.style.height=size+'px';const g=c.getContext('2d');g.scale(2,2);drawPine(g,size/2,size/2+3,size*.32,ROLE_C[role],true,false);return c;}
+function renderMenu(){const rb=$('#roles');rb.innerHTML='';for(const r of['tank','healer','dps']){const b=document.createElement('button');b.className='role';b.type='button';b.setAttribute('aria-pressed',String(ROLE===r));
+    b.appendChild(rolePine(r,46));const d=document.createElement('div');d.innerHTML=`<b>${ROLE_N[r]}</b><span>${{tank:'Hold the boss, aim frontals, taunt-swap, pick up adds.',healer:'Keep 11 raiders alive with pulses, dispels and a raid cooldown.',dps:'Kill adds, interrupt casts, burst damage windows.'}[r]}</span>`;b.appendChild(d);
+    b.onclick=()=>{ROLE=r;saveProg();renderMenu();};rb.appendChild(b);}
+  for(const [id,list] of[['#bl1',BOSSES.slice(0,8)],['#bl2',BOSSES.slice(8)]]){const box=$(id);box.innerHTML='';for(const def of list){const b=document.createElement('button');b.className='boss';b.type='button';const pr=progress[def.id]||{};
+    b.innerHTML=`<span class="no">${def.raid2?'Single-boss raid':'Boss '+def.num+' of 8'}</span><b>${def.name}</b><span class="pips"><span class="pip t ${pr.tank?'on':''}">TANK</span><span class="pip h ${pr.healer?'on':''}">HEAL</span><span class="pip d ${pr.dps?'on':''}">DPS</span></span>`;
+    b.onclick=()=>openBrief(BOSSES.indexOf(def));box.appendChild(b);}}}
+function openBrief(i){selBoss=i;const d=BOSSES[i];$('#br-eye').textContent=(d.raid2?"The Unbinding of Kith'ix":'The Venomous Abyss · Boss '+d.num)+' · Heroic';$('#br-name').textContent=d.name;$('#br-blurb').textContent=d.blurb;
+  $('#br-rolehead').textContent='Your job as '+ROLE_N[ROLE];const fill=(id,arr)=>{const u=$(id);u.innerHTML='';for(const t of arr){const li=document.createElement('li');li.textContent=t;u.appendChild(li);}};fill('#br-role',d.tips[ROLE]);fill('#br-all',d.tips.all);showScreen('brief');}
+function showResult(){if(!G||!G.result)return;const r=G.result,d=G.def;$('#rs-eye').textContent=d.name+' · '+ROLE_N[ROLE];
+  if(r.win){$('#rs-head').textContent='Victory';$('#rs-reason').textContent=`${d.name} defeated as ${ROLE_N[ROLE].toLowerCase()==='damage'?'damage':ROLE_N[ROLE].toLowerCase()}.`;$('#rs-tip').textContent='';}
+  else{$('#rs-head').textContent='Wipe';$('#rs-reason').textContent=r.reason;$('#rs-tip').textContent=r.tip||'';}
+  $('#rs-stat').textContent=`Time ${fmtT(G.t)} · Raid deaths ${G.deaths}`+(G.bosses.filter(b=>b.required&&b.alive).length?` · Boss health ${G.bosses.filter(b=>b.required&&b.alive).map(b=>Math.ceil(b.hp*100)+'%').join(' / ')}`:'');
+  $('#rs-next').hidden=selBoss>=BOSSES.length-1;showScreen('result');}
+$('#br-go').onclick=()=>startFight(selBoss);$('#br-back').onclick=()=>showScreen('menu');
+$('#rs-retry').onclick=()=>startFight(selBoss);$('#rs-next').onclick=()=>openBrief(Math.min(BOSSES.length-1,selBoss+1));$('#rs-menu').onclick=()=>showScreen('menu');
+$('#ps-resume').onclick=()=>{G.paused=false;showScreen('fight');};$('#ps-restart').onclick=()=>startFight(selBoss);$('#ps-menu').onclick=()=>{G=null;showScreen('menu');};
+
+/* ================= input ================= */
+addEventListener('keydown',e=>{if(screen==='fight'){if(['Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
+    if(e.code==='Escape'||e.code==='KeyP'){if(G&&!G.over){G.paused=true;showScreen('pause');}return;}
+    if(!e.repeat){if(e.code==='Space')useAbility(0);else if(e.code==='KeyE')useAbility(1);else if(e.code==='KeyQ')useAbility(2);else if(e.code==='ShiftLeft'||e.code==='ShiftRight')useAbility(3);else if(e.code==='Tab')cycleTarget();}}
+  else if(screen==='pause'&&(e.code==='Escape'||e.code==='KeyP')){G.paused=false;showScreen('fight');}
+  keys[e.code]=true;});
+addEventListener('keyup',e=>{keys[e.code]=false;});
+addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+function cycleTarget(){if(!G)return;const list=[...G.adds.filter(a=>!a.untargetable),...G.bosses.filter(b=>b.alive&&!b.untargetable&&!b.hidden)].sort((a,b)=>D(a,P)-D(b,P));if(!list.length)return;const i=list.indexOf(G.target);G.target=list[(i+1)%list.length];}
+function toLogical(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H};}
+cv.addEventListener('pointerdown',e=>{if(!G||screen!=='fight')return;const p=toLogical(e);
+  if(e.pointerType!=='mouse'&&p.x<W*.45&&!joy.on){joy.on=true;joy.id=e.pointerId;joy.x0=p.x;joy.y0=p.y;joy.vx=joy.vy=0;cv.setPointerCapture(e.pointerId);return;}
+  let best=null,bd=1e9;for(const t of[...G.adds.filter(a=>!a.untargetable),...G.bosses.filter(b=>b.alive&&!b.untargetable&&!b.hidden)]){const d=D(t,p);if(d<t.r+16&&d<bd){bd=d;best=t;}}if(best)G.target=best;});
+cv.addEventListener('pointermove',e=>{if(joy.on&&e.pointerId===joy.id){const p=toLogical(e);let dx=p.x-joy.x0,dy=p.y-joy.y0;const l=Math.hypot(dx,dy);if(l>55){dx=dx/l*55;dy=dy/l*55;}joy.vx=dx/55;joy.vy=dy/55;}});
+const endJoy=e=>{if(joy.on&&e.pointerId===joy.id){joy.on=false;joy.vx=joy.vy=0;}};cv.addEventListener('pointerup',endJoy);cv.addEventListener('pointercancel',endJoy);
+
+/* ================= sizing & loop ================= */
+function fit(){const st=$('#stage');const w=st.clientWidth,h=st.clientHeight;if(!w||!h)return;scale=Math.min(w/W,h/H);dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.style.width=Math.floor(W*scale)+'px';cv.style.height=Math.floor(H*scale)+'px';const bw=Math.floor(W*scale*dpr),bh=Math.floor(H*scale*dpr);if(cv.width!==bw||cv.height!==bh){cv.width=bw;cv.height=bh;}}
+new ResizeObserver(fit).observe($('#stage'));addEventListener('resize',fit);
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&G&&!G.over&&screen==='fight'){G.paused=true;showScreen('pause');}});
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{FONT=getComputedStyle(document.body).fontFamily;});
+let last=performance.now();
+function loop(ts){const dt=Math.min(.05,(ts-last)/1000);last=ts;
+  if(G&&screen==='fight'&&!G.paused){if(!G.over)update(dt);tickFx(dt);}
+  if(G&&(screen==='fight'||screen==='result'||screen==='pause')){fit();draw();hud();}
+  requestAnimationFrame(loop);}
+showScreen('menu');requestAnimationFrame(loop);
+</script>
